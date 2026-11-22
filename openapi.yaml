@@ -1,0 +1,2684 @@
+openapi: 3.1.0
+info:
+  title: AutoHire KE API
+  version: 1.0.0
+  description: |
+    Contract for the AutoHire KE frontend and backend. All successful API
+    responses use `{ success: true, data, error: null }`; all errors use the
+    ErrorEnvelope schema. Monetary values are integer Kenyan shillings.
+    Pricing, booking state changes, authorization, and payment outcomes are
+    server-owned. Rules taken from MSW are provisional defaults. Timestamps
+    are ISO-8601 UTC instants; business-day calculations and UI display use
+    Africa/Nairobi. Cursor-paginated list responses contain `items` and
+    `nextCursor`; default limit is 50 and maximum limit is 100.
+servers:
+  - url: /
+    description: Same-origin or reverse-proxy deployment
+security:
+  - BearerAuth: []
+tags:
+  - name: System
+  - name: Auth
+  - name: Vehicles
+  - name: Maintenance
+  - name: Quotes
+  - name: Bookings
+  - name: Guest bookings
+  - name: Payments
+  - name: Drivers
+  - name: Mechanics
+  - name: Incidents
+  - name: Dashboard
+  - name: Staff
+  - name: Audit
+  - name: Contact
+x-error-codes:
+  getHealth: [SERVICE_UNAVAILABLE]
+  login: [INVALID_CREDENTIALS, ACCOUNT_DEACTIVATED, RATE_LIMITED]
+  refreshSession: [UNAUTHENTICATED, ACCOUNT_DEACTIVATED, RATE_LIMITED]
+  logout: []
+  getCurrentUser: [UNAUTHENTICATED]
+  updateCurrentUser: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR]
+  requestPasswordReset: [RATE_LIMITED]
+  confirmPasswordReset: [INVALID_RESET_TOKEN, RATE_LIMITED, VALIDATION_ERROR]
+  acceptStaffInvitation: [INVALID_INVITATION, INVITATION_EXPIRED, VALIDATION_ERROR, DUPLICATE_EMAIL]
+  listVehicles: [INVALID_QUERY, INVALID_DATE_RANGE, VALIDATION_ERROR]
+  createVehicle: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR, CONFLICT]
+  getVehicle: [NOT_FOUND]
+  updateVehicle: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, VEHICLE_UNAVAILABLE]
+  listMaintenanceWindows: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY, VALIDATION_ERROR]
+  createMaintenanceWindow: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, VEHICLE_UNAVAILABLE]
+  updateMaintenanceWindow: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, VEHICLE_UNAVAILABLE]
+  deleteMaintenanceWindow: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND]
+  calculateQuote: [NOT_FOUND, INVALID_DATE_RANGE, VALIDATION_ERROR, VEHICLE_UNAVAILABLE]
+  listBookings: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY, VALIDATION_ERROR]
+  createBooking: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR, INVALID_DATE_RANGE, VEHICLE_UNAVAILABLE, IDEMPOTENCY_CONFLICT]
+  getBooking: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR]
+  approveOfflinePayment: [UNAUTHENTICATED, FORBIDDEN, SELF_APPROVAL_FORBIDDEN, INVALID_APPROVAL, INVALID_STATUS, HOLD_EXPIRED, PAYMENT_METHOD_MISMATCH, VALIDATION_ERROR]
+  cancelBooking: [UNAUTHENTICATED, FORBIDDEN, GUEST_ACCESS_INVALID, CANCELLATION_UNAVAILABLE, REFUND_APPROVAL_REQUIRED, HOLD_EXPIRED, INVALID_STATUS, VALIDATION_ERROR]
+  createBookingRefund: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_REFUND, IDEMPOTENCY_CONFLICT]
+  assignDriver: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, DRIVER_UNAVAILABLE, INVALID_STATUS]
+  updateAssignedDriverTripStatus: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_TRIP_STATUS]
+  getGuestCheckout: [NOT_FOUND, HOLD_EXPIRED]
+  submitGuestCheckout: [NOT_FOUND, HOLD_EXPIRED, INVALID_CHECKOUT, INVALID_LICENCE, INVALID_FILE]
+  getGuestBooking: [GUEST_ACCESS_INVALID, NOT_FOUND]
+  exchangeGuestBookingAccess: [GUEST_ACCESS_INVALID, NOT_FOUND]
+  uploadInspectionPhoto: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, INVALID_FILE, PHOTO_LIMIT_EXCEEDED, PAYLOAD_TOO_LARGE]
+  checkOutBooking: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, INVALID_INSPECTION]
+  previewCheckInSettlement: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CHECK_OUT_REQUIRED, ODOMETER_INVALID]
+  checkInBooking: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CHECK_OUT_REQUIRED, ODOMETER_INVALID, CONFIRMATION_REQUIRED]
+  initiateMpesaStk: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, HOLD_EXPIRED, INVALID_PHONE, PAYMENT_NOT_DUE, IDEMPOTENCY_CONFLICT]
+  getPaymentStatus: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND]
+  receiveMpesaCallback: [INVALID_PROVIDER_SIGNATURE, INVALID_PROVIDER_EVENT, PAYMENT_NOT_FOUND]
+  listDrivers: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  listAvailableDrivers: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  listMyDriverTrips: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  listMechanics: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  createMechanic: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR, CONFLICT]
+  findNearestMechanics: [UNAUTHENTICATED, FORBIDDEN, INVALID_LOCATION, INVALID_QUERY]
+  listIncidents: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  createBreakdownIncident: [INVALID_INCIDENT, INVALID_LOCATION, INVALID_FILE, PAYLOAD_TOO_LARGE, RATE_LIMITED]
+  dispatchIncident: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, DRIVER_UNAVAILABLE, NO_PARTNER_WITHIN_RANGE, VEHICLE_REQUIRED]
+  resolveIncident: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, VALIDATION_ERROR]
+  getDashboard: [UNAUTHENTICATED, FORBIDDEN]
+  getNotificationCounts: [UNAUTHENTICATED, FORBIDDEN]
+  searchStaffRecords: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  listPendingApprovals: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  listStaff: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  inviteStaff: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR, DUPLICATE_EMAIL, EMAIL_DELIVERY_UNAVAILABLE]
+  updateStaff: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, LAST_OWNER_REQUIRED, DRIVER_PROFILE_REQUIRED, VALIDATION_ERROR]
+  resendStaffInvitation: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVITATION_ACCEPTED, INVITATION_EXPIRED, EMAIL_DELIVERY_UNAVAILABLE]
+  revokeStaffInvitation: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVITATION_ACCEPTED]
+  listAuditEntries: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  submitContactMessage: [INVALID_CONTACT, RATE_LIMITED, EMAIL_DELIVERY_UNAVAILABLE]
+x-state-machines:
+  booking:
+    states: [reserved, confirmed, checked_out, overdue, completed, cancelled, expired]
+    transitions:
+      - { from: reserved, to: confirmed, trigger: verified payment or offline approval, actor: payment service or authorized approver }
+      - { from: reserved, to: cancelled, trigger: cancellation, actor: authorized staff or guest with access before cutoff }
+      - { from: reserved, to: expired, trigger: 15-minute hold expiry, actor: system }
+      - { from: confirmed, to: checked_out, trigger: pickup inspection, actor: owner, manager, agent, or assigned driver }
+      - { from: confirmed, to: completed, trigger: assigned chauffeur trip completion, actor: assigned driver }
+      - { from: confirmed, to: cancelled, trigger: cancellation, actor: authorized staff }
+      - { from: checked_out, to: overdue, trigger: return deadline plus grace period, actor: system }
+      - { from: checked_out, to: completed, trigger: check-in inspection, actor: owner, manager, agent, or assigned driver }
+      - { from: overdue, to: completed, trigger: check-in inspection, actor: owner, manager, agent, or assigned driver }
+    terminalStates: [completed, cancelled, expired]
+  payment:
+    states: [pending, paid, failed, refund_pending, refunded]
+    transitions:
+      - { from: pending, to: paid, trigger: verified provider callback or offline approval, actor: payment service or authorized approver }
+      - { from: pending, to: failed, trigger: verified provider callback, actor: payment service }
+      - { from: paid, to: refund_pending, trigger: approved cancellation, actor: owner or payment service }
+      - { from: refund_pending, to: refunded, trigger: provider refund confirmation, actor: payment service }
+      - { from: refund_pending, to: failed, trigger: provider refund failure, actor: payment service }
+  trip:
+    states: [unassigned, en_route_to_pickup, customer_onboard, trip_completed]
+    transitions:
+      - { from: unassigned, to: en_route_to_pickup, actor: assigned driver }
+      - { from: en_route_to_pickup, to: customer_onboard, actor: assigned driver }
+      - { from: customer_onboard, to: trip_completed, actor: assigned driver }
+  inspection:
+    states: [not_checked_out, checked_out, checked_in]
+    transitions:
+      - { from: not_checked_out, to: checked_out, trigger: confirmed booking and signed pickup inspection, actor: authorized handover staff or assigned driver }
+      - { from: checked_out, to: checked_in, trigger: signed return inspection with nondecreasing odometer, actor: authorized handover staff or assigned driver }
+  incident:
+    states: [open, dispatched, awaiting_replacement, resolved]
+    transitions:
+      - { from: open, to: dispatched, trigger: mechanic or rescue dispatch, actor: authorized dispatcher }
+      - { from: open, to: awaiting_replacement, trigger: replacement vehicle dispatch, actor: authorized dispatcher }
+      - { from: dispatched, to: resolved, trigger: resolution recorded, actor: authorized incident manager or mechanic }
+      - { from: awaiting_replacement, to: resolved, trigger: resolution recorded, actor: authorized incident manager or mechanic }
+x-owner-provisioning:
+  method: one-time secure CLI bootstrap
+  constraints: [only when no owner exists, password read from secure prompt, password hashed, no public owner registration, no seeded credentials]
+x-operation-access:
+  getHealth: { auth: public, roles: [] }
+  login: { auth: public, roles: [] }
+  refreshSession: { auth: refresh-cookie, roles: [] }
+  logout: { auth: refresh-cookie, roles: [] }
+  getCurrentUser: { auth: bearer, roles: [owner, manager, agent, driver, mechanic] }
+  updateCurrentUser: { auth: bearer, roles: [owner, manager, agent, driver, mechanic] }
+  requestPasswordReset: { auth: public, roles: [] }
+  confirmPasswordReset: { auth: single-use-reset-token, roles: [] }
+  acceptStaffInvitation: { auth: single-use-invitation-token, roles: [] }
+  listVehicles: { auth: public, roles: [] }
+  createVehicle: { auth: bearer, roles: [owner, manager] }
+  getVehicle: { auth: public, roles: [] }
+  updateVehicle: { auth: bearer, roles: [owner, manager] }
+  listMaintenanceWindows: { auth: bearer, roles: [owner, manager, agent, mechanic] }
+  createMaintenanceWindow: { auth: bearer, roles: [owner, manager] }
+  updateMaintenanceWindow: { auth: bearer, roles: [owner, manager] }
+  deleteMaintenanceWindow: { auth: bearer, roles: [owner, manager] }
+  calculateQuote: { auth: public, roles: [] }
+  listBookings: { auth: bearer, roles: [owner, manager, agent] }
+  createBooking: { auth: bearer, roles: [owner, manager, agent] }
+  getBooking: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
+  approveOfflinePayment: { auth: bearer, roles: [owner, manager, agent], constraints: [not-creator, agent-cannot-approve-corporate] }
+  cancelBooking: { auth: bearer-or-guest-cookie, roles: [owner, manager, agent, authorized-guest] }
+  createBookingRefund: { auth: bearer, roles: [owner], constraints: [explicit-owner-approval, idempotent] }
+  assignDriver: { auth: bearer, roles: [owner, manager, agent] }
+  updateAssignedDriverTripStatus: { auth: bearer, roles: [assigned-driver] }
+  getGuestCheckout: { auth: public, roles: [] }
+  submitGuestCheckout: { auth: public, roles: [] }
+  getGuestBooking: { auth: booking-access-cookie, roles: [authorized-guest] }
+  exchangeGuestBookingAccess: { auth: one-time-guest-token, roles: [] }
+  uploadInspectionPhoto: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
+  checkOutBooking: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
+  previewCheckInSettlement: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
+  checkInBooking: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
+  initiateMpesaStk: { auth: bearer-or-booking-access-cookie, roles: [owner, manager, agent, authorized-guest] }
+  getPaymentStatus: { auth: bearer-or-booking-access-cookie, roles: [owner, manager, agent, authorized-guest] }
+  receiveMpesaCallback: { auth: provider-signature, roles: [] }
+  listDrivers: { auth: bearer, roles: [owner, manager, agent] }
+  listAvailableDrivers: { auth: bearer, roles: [owner, manager, agent] }
+  listMyDriverTrips: { auth: bearer, roles: [driver] }
+  listMechanics: { auth: bearer, roles: [owner, manager, agent, driver, mechanic] }
+  createMechanic: { auth: bearer, roles: [owner, manager] }
+  findNearestMechanics: { auth: bearer, roles: [owner, manager, agent, driver, mechanic] }
+  listIncidents: { auth: bearer, roles: [owner, manager, agent, mechanic] }
+  createBreakdownIncident: { auth: optional-bearer, roles: [owner, manager, agent, driver, authorized-guest] }
+  dispatchIncident: { auth: bearer, roles: [owner, manager, agent] }
+  resolveIncident: { auth: bearer, roles: [owner, manager, agent, mechanic] }
+  getDashboard: { auth: bearer, roles: [owner, manager, agent] }
+  getNotificationCounts: { auth: bearer, roles: [owner, manager, agent, driver, mechanic] }
+  searchStaffRecords: { auth: bearer, roles: [owner, manager, agent] }
+  listPendingApprovals: { auth: bearer, roles: [owner, manager, agent] }
+  listStaff: { auth: bearer, roles: [owner, manager] }
+  inviteStaff: { auth: bearer, roles: [owner, manager] }
+  updateStaff: { auth: bearer, roles: [owner, manager] }
+  resendStaffInvitation: { auth: bearer, roles: [owner, manager] }
+  revokeStaffInvitation: { auth: bearer, roles: [owner, manager] }
+  listAuditEntries: { auth: bearer, roles: [owner] }
+  submitContactMessage: { auth: public, roles: [] }
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+      responses:
+        '200':
+          description: Signed in; refresh cookie is HttpOnly, SameSite=Lax, Secure in production, and expires 30 days after session creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      security: []
+      description: Rotates the hashed refresh credential and returns a 15-minute access JWT. The refresh session has a 30-day absolute expiry from login.
+      responses:
+        '200':
+          description: Access token refreshed; rotated refresh cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessTokenEnvelope'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      security: []
+      description: Idempotently revokes the refresh session, invalidating access tokens for that session, and expires its cookie.
+      responses:
+        '200':
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [Auth]
+      operationId: updateCurrentUser
+      description: Updates only the authenticated user's editable name and phone; email and role are immutable here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                phone: { type: string, pattern: '^254[17][0-9]{8}$' }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/password-reset/request:
+    post:
+      tags: [Auth]
+      operationId: requestPasswordReset
+      security: []
+      description: Always returns the same acknowledgement for known and unknown email addresses. Rate limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Acknowledgement returned without account enumeration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcknowledgementEnvelope'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmPasswordReset
+      security: []
+      description: Consumes a single-use hashed reset token that expires after 30 minutes and revokes existing refresh sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, minLength: 32 }
+                password: { type: string, minLength: 12, writeOnly: true }
+      responses:
+        '200':
+          description: Password updated and refresh sessions revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcknowledgementEnvelope'
+        '400':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/auth/invitations/accept:
+    post:
+      tags: [Auth]
+      operationId: acceptStaffInvitation
+      security: []
+      description: Accepts an expiring, single-use staff invitation; this is not public registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, minLength: 32 }
+                password: { type: string, minLength: 12, writeOnly: true }
+      responses:
+        '200':
+          description: Invitation accepted and account activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/vehicles:
+    get:
+      tags: [Vehicles]
+      operationId: listVehicles
+      security: []
+      description: |
+        Public listing when no dates are supplied. Without a date range, status
+        is the current derived state; booked is never persisted as an operator
+        status. Supplying both from and to returns only vehicles with no
+        overlapping active booking or maintenance window. Booking creation
+        always rechecks availability transactionally.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [registration:asc], default: registration:asc }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Vehicles, filtered by availability when both dates are supplied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Vehicles]
+      operationId: createVehicle
+      description: |
+        Requires vehicles:manage permission (owner or manager). Vehicle records
+        are retained; set status to inactive rather than deleting a vehicle.
+        The writable statuses are available, maintenance, and inactive;
+        booked is derived from active reservations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleInput'
+      responses:
+        '201':
+          description: Vehicle created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/vehicles/{vehicleId}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [Vehicles]
+      operationId: getVehicle
+      security: []
+      responses:
+        '200':
+          description: Vehicle details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [Vehicles]
+      operationId: updateVehicle
+      description: |
+        Requires vehicles:manage permission. Status and pricing changes are
+        validated by the server. A vehicle cannot be changed to maintenance or
+        inactive while it has an active hold or booking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehiclePatch'
+      responses:
+        '200':
+          description: Updated vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/maintenance-windows:
+    get:
+      tags: [Maintenance]
+      operationId: listMaintenanceWindows
+      description: Requires maintenance:read or timeline:view; returns no operational notes restricted to fleet managers.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [startAt:asc], default: startAt:asc }
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Maintenance windows overlapping the requested interval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceWindowListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Maintenance]
+      operationId: createMaintenanceWindow
+      description: |
+        Requires vehicles:manage permission. Intervals use half-open
+        [startAt, endAt) boundaries. Conflicting active bookings must be
+        rejected. Maintenance writes serialize with reservations for the
+        vehicle in a MongoDB transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceWindowInput'
+      responses:
+        '201':
+          description: Maintenance window created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceWindowEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/maintenance-windows/{windowId}:
+    parameters:
+      - name: windowId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Maintenance]
+      operationId: updateMaintenanceWindow
+      description: Requires vehicles:manage permission. Updates that overlap an active booking are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceWindowPatch'
+      responses:
+        '200':
+          description: Updated maintenance window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceWindowEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [Maintenance]
+      operationId: deleteMaintenanceWindow
+      description: Requires vehicles:manage permission.
+      responses:
+        '200':
+          description: Maintenance window removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/quotes/calculate:
+    post:
+      tags: [Quotes]
+      operationId: calculateQuote
+      security: []
+      description: |
+        Calculates every monetary field on the server. Client-provided totals
+        are not accepted. Pickup must be in the future and the vehicle must be
+        available for the requested interval. Provisional MSW defaults are ceil(duration/24h) with
+        a one-day minimum, 16% VAT, refundable deposit KES 15,000, chauffeur
+        fee KES 3,500/day in-town or KES 6,500/day upcountry, baby seat KES
+        500/day, rooftop tent KES 1,800/day, cooler box KES 700/day, and
+        airport pickup KES 2,500 once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+      responses:
+        '200':
+          description: Authoritative quote in KES
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings:
+    get:
+      tags: [Bookings]
+      operationId: listBookings
+      description: |
+        Requires owner, manager, or agent role. Date filters use overlap
+        semantics: returnAt must be after from and pickupAt must be before to.
+        Due-today filters use Africa/Nairobi calendar boundaries. Expired
+        reservation holds are lazily transitioned to expired before results
+        are returned.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [pickupAt:asc, pickupAt:desc, createdAt:desc], default: pickupAt:asc }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - in: query
+          name: paymentMethod
+          schema: { $ref: '#/components/schemas/PaymentMethod' }
+        - in: query
+          name: vehicleId
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: pickup
+          schema: { type: string, enum: [due-today] }
+        - in: query
+          name: return
+          schema: { type: string, enum: [due-today] }
+      responses:
+        '200':
+          description: Matching bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      description: |
+        Requires bookings:create. The server derives createdById, recalculates
+        pricing, checks availability atomically in a MongoDB transaction, and
+        creates a 15-minute hold. Transactions require a MongoDB replica set.
+        Expiry is applied lazily when bookings are listed/read or an approval
+        or cancellation is attempted; availability checks ignore expired holds.
+        Reservation and maintenance intervals use half-open [start, end)
+        semantics, so adjacent reservations are permitted.
+        No client-supplied total, pricing snapshot, or status is accepted.
+        Repeated requests with the same Idempotency-Key and identical payload
+        replay the original booking; reusing the key with a different payload
+        returns IDEMPOTENCY_CONFLICT.
+        The deprecated createdById field is ignored; the actor always comes
+        from the authenticated user.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+      responses:
+        '201':
+          description: Booking reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      description: Requires owner, manager, or agent role; a driver may read only their assigned booking.
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/offline-approval:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: approveOfflinePayment
+      description: |
+        Requires approvals:offline. The approver cannot be the booking creator.
+        Agents cannot approve corporate credit. Corporate approvals require a
+        reason; every method requires a payment reference. Success records the
+        evidence as paid, clears pendingApproval, and confirms the booking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentMethod, reference]
+              properties:
+                paymentMethod:
+                  type: string
+                  enum: [cash, mpesa_manual, bank, corporate]
+                reference: { type: string, minLength: 1, maxLength: 120 }
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Payment recorded and booking confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingKey}/cancel:
+    parameters:
+      - name: bookingKey
+        in: path
+        required: true
+        description: Booking ID for staff requests or booking reference for guest requests.
+        schema: { type: string }
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      description: |
+        Staff requests require bookings:create and use the booking ID.
+        Guest requests use the public reference and the scoped booking_access cookie;
+        guest cancellation is permitted at least 48 hours before pickup under
+        the provisional mock policy. Paid guest cancellations create pending
+        refunds.         Staff cancellation of paid bookings is rejected until an
+        owner-approved refund record exists.
+      security:
+        - BearerAuth: []
+        - GuestBookingToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Booking cancelled; staff receives the booking, guest receives a cancellation acknowledgement
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        oneOf:
+                          - $ref: '#/components/schemas/Booking'
+                          - type: object
+                            required: [cancelled]
+                            properties:
+                              cancelled: { const: true }
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/refunds:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Payments]
+      operationId: createBookingRefund
+      description: Requires owner role. The server calculates the refundable amount from captured payments and the cancellation policy; clients cannot choose the amount.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, reason]
+              properties:
+                paymentId: { type: string }
+                reason: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: Refund recorded as pending provider settlement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/driver:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Drivers]
+      operationId: assignDriver
+      description: Requires drivers:assign. Availability, licence validity, and overlapping trips are rechecked atomically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId]
+              properties:
+                driverId: { type: string }
+      responses:
+        '200':
+          description: Driver assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/driver-status:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Drivers]
+      operationId: updateAssignedDriverTripStatus
+      description: Driver may update only their own assigned booking; only the next legal trip transition is accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [en_route_to_pickup, customer_onboard, trip_completed]
+      responses:
+        '200':
+          description: Trip state updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/checkout:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    get:
+      tags: [Guest bookings]
+      operationId: getGuestCheckout
+      security: []
+      description: Returns only public booking and vehicle fields for a live reservation hold.
+      responses:
+        '200':
+          description: Checkout details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestCheckoutEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Guest bookings]
+      operationId: submitGuestCheckout
+      security: []
+      description: |
+        Multipart form. Self-drive requires a JPG, PNG, WebP, or PDF licence
+        up to 5 MiB. The server validates the hold, consent, customer fields,
+        and payment method. The response includes a short-lived access token
+        that clients exchange for a scoped HttpOnly cookie; never put it in a URL.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, phone, email, idNumber, paymentMethod, termsAccepted, rulesAccepted]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                phone: { type: string, pattern: '^254[17][0-9]{8}$' }
+                email: { type: string, format: email }
+                idNumber: { type: string, minLength: 4, maxLength: 50 }
+                paymentMethod: { type: string, enum: [mpesa_online, cash] }
+                termsAccepted: { type: string, enum: ['true'] }
+                rulesAccepted: { type: string, enum: ['true'] }
+                licence:
+                  type: string
+                  format: binary
+                  description: Required for self-drive bookings; JPG, JPEG, PNG, WebP, or PDF; maximum 5 MiB.
+            encoding:
+              licence:
+                contentType: image/jpeg, image/png, image/webp, application/pdf
+      responses:
+        '201':
+          description: Checkout details saved and guest access issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestBookingAccessEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{reference}/guest:
+    parameters:
+      - name: reference
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Guest bookings]
+      operationId: getGuestBooking
+      security:
+        - GuestBookingToken: []
+      responses:
+        '200':
+          description: Authorized guest booking summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestBookingSummaryEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Guest bookings]
+      operationId: exchangeGuestBookingAccess
+      security: []
+      description: Exchanges the checkout response token for a scoped HttpOnly, Secure, SameSite=Lax cookie. Never put the token in a URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accessToken]
+              properties:
+                accessToken: { type: string, minLength: 32 }
+      responses:
+        '200':
+          description: Guest session established; booking_access cookie is scoped to this booking path.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcknowledgementEnvelope'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/inspections/photos:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: uploadInspectionPhoto
+      description: Requires handover:manage and an authorized booking assignment. Accepts one JPEG, PNG, or WebP image up to 5 MiB, with at most 10 files per check-out or check-in inspection; persist before returning its URL.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [type, file]
+              properties:
+                type: { type: string, enum: [check_out, check_in] }
+                file: { type: string, format: binary, description: One JPEG, PNG, or WebP image up to 5 MiB. }
+            encoding:
+              file:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '201':
+          description: Inspection photo stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/check-out:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: checkOutBooking
+      description: Requires handover:manage and booking assignment when called by a driver. Server validates confirmed state, references only photos uploaded for this check-out, and records its own completion timestamp.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandoverRequest'
+      responses:
+        '200':
+          description: Check-out inspection recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/check-in/settlement:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: previewCheckInSettlement
+      description: Requires handover:manage and booking assignment when called by a driver. Settlement is calculated from stored booking and inspection data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [odometer]
+              properties:
+                odometer: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Server-calculated settlement preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/check-in:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: checkInBooking
+      description: Requires handover:manage and booking assignment when called by a driver. Validates the prior check-out, odometer, uploaded photo references, and legal state transition; persists the final settlement on the check-in inspection.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandoverRequest'
+      responses:
+        '200':
+          description: Check-in recorded and booking completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{bookingId}/payments/stk:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Payments]
+      operationId: initiateMpesaStk
+      description: Server obtains the payable amount from the booking; legacy client-supplied amounts are ignored.
+      security:
+        - BearerAuth: []
+        - GuestBookingToken: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, pattern: '^254[17][0-9]{8}$' }
+                amountKes:
+                  type: integer
+                  deprecated: true
+                  description: Legacy frontend field; server ignores it and derives the amount from the booking.
+      responses:
+        '201':
+          description: Payment request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StkInitiationEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/payments/{paymentId}/status:
+    parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Payments]
+      operationId: getPaymentStatus
+      security:
+        - BearerAuth: []
+        - GuestBookingToken: []
+      responses:
+        '200':
+          description: Current payment state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StkStatusEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/webhooks/mpesa:
+    post:
+      tags: [Payments]
+      operationId: receiveMpesaCallback
+      security: []
+      description: |
+        Provider callback endpoint. Verify the provider signature before
+        processing. Provider event identifiers must be persisted uniquely so
+        duplicate callbacks return success without applying payment twice.
+        Exact provider payload/signature fields are an integration prerequisite.
+      parameters:
+        - in: header
+          name: X-Provider-Signature
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerEventId, paymentId, outcome]
+              properties:
+                providerEventId: { type: string, minLength: 1 }
+                paymentId: { type: string }
+                outcome: { type: string, enum: [confirmed, failed] }
+                providerReference: { type: string }
+                amountKes: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Callback accepted or recognized as a duplicate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/drivers:
+    get:
+      tags: [Drivers]
+      operationId: listDrivers
+      description: Requires drivers:assign permission. The roster includes driver accounts with complete licence and PSV profile data.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [name:asc], default: name:asc }
+      responses:
+        '200':
+          description: Driver roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/drivers/available:
+    get:
+      tags: [Drivers]
+      operationId: listAvailableDrivers
+      description: Requires drivers:assign permission; results are recalculated atomically at assignment time. A driver's licence and PSV credentials must remain valid through the return time, and vehicles with more than 8 seats require licence class C1.
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: vehicleId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Eligible drivers and optional rotation suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableDriversEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/drivers/me/trips:
+    get:
+      tags: [Drivers]
+      operationId: listMyDriverTrips
+      description: Driver identity is derived from the access token; no driver ID is accepted from the client.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [pickupAt:asc], default: pickupAt:asc }
+      responses:
+        '200':
+          description: Trips assigned to the current driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/mechanics:
+    get:
+      tags: [Mechanics]
+      operationId: listMechanics
+      description: Requires mechanics:read permission.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [name:asc], default: name:asc }
+      responses:
+        '200':
+          description: Mechanic directory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MechanicListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Mechanics]
+      operationId: createMechanic
+      description: Requires owner or manager role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MechanicInput'
+      responses:
+        '201':
+          description: Mechanic added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MechanicEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/mechanics/nearest:
+    get:
+      tags: [Mechanics]
+      operationId: findNearestMechanics
+      description: Requires mechanics:read permission.
+      parameters:
+        - in: query
+          name: lat
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - in: query
+          name: lng
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - in: query
+          name: radiusKm
+          schema: { type: number, exclusiveMinimum: 0, default: 50 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 5 }
+        - in: query
+          name: category
+          schema: { $ref: '#/components/schemas/IncidentCategory' }
+      responses:
+        '200':
+          description: Nearby mechanics ordered by distance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NearbyMechanicListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/incidents:
+    get:
+      tags: [Incidents]
+      operationId: listIncidents
+      description: Requires incidents:manage permission. Phase 5 is operated as a single branch; multi-branch isolation is deferred until vehicles and bookings carry branch ownership.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [createdAt:desc], default: createdAt:desc }
+      responses:
+        '200':
+          description: Incidents ordered newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/incidents/breakdown:
+    post:
+      tags: [Incidents]
+      operationId: createBreakdownIncident
+      description: Accepts authenticated driver/staff reports and guest reports with rate limiting. Photo files are privately stored with the incident and are only retrievable by authenticated incident managers. Retain these photos with the incident; no automatic deletion is configured in Phase 5.
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IncidentCreateRequest'
+            encoding:
+              location:
+                contentType: application/json
+              photos:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '201':
+          description: Incident created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/incidents/{incidentId}/dispatch:
+    parameters:
+      - name: incidentId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Incidents]
+      operationId: dispatchIncident
+      description: Requires mechanics:dispatch permission. The server selects a nearby eligible partner for closest_partner dispatch and validates replacement vehicle availability. An active replacement dispatch blocks future reservations of that vehicle until the incident is resolved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { $ref: '#/components/schemas/IncidentDispatchType' }
+                mechanicId: { type: string }
+                vehicleId: { type: string }
+      responses:
+        '200':
+          description: Incident dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/incidents/{incidentId}/resolve:
+    parameters:
+      - name: incidentId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Incidents]
+      operationId: resolveIncident
+      description: Requires incidents:manage permission; resolution is recorded in the incident history. In the single-branch Phase 5 deployment, any authenticated mechanic may resolve a dispatched incident.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution]
+              properties:
+                resolution: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '200':
+          description: Incident resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/dashboard:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboard
+      description: Requires dashboard:view permission. Metrics are computed from persisted records, not fixtures.
+      responses:
+        '200':
+          description: Dashboard aggregates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/notifications:
+    get:
+      tags: [Dashboard]
+      operationId: getNotificationCounts
+      description: Requires owner, manager, or agent role. Return only counts the requesting role is allowed to see.
+      responses:
+        '200':
+          description: Shell notification counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCountsEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/search:
+    get:
+      tags: [Dashboard]
+      operationId: searchStaffRecords
+      description: Requires an authenticated staff user; only records the user may access are returned.
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+      responses:
+        '200':
+          description: Matching vehicles, bookings, and customers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResultsEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/approvals:
+    get:
+      tags: [Bookings]
+      operationId: listPendingApprovals
+      description: Requires approvals:offline; excludes bookings created by the requesting user.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: sort
+          schema: { type: string, enum: [holdExpiresAt:asc], default: holdExpiresAt:asc }
+      responses:
+        '200':
+          description: Bookings awaiting offline-payment approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/staff:
+    get:
+      tags: [Staff]
+      operationId: listStaff
+      description: Requires staff:manage permission; manager results and actions cannot include owner accounts.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: active
+          schema: { type: boolean }
+        - in: query
+          name: branch
+          schema: { type: string }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [name:asc], default: name:asc }
+      responses:
+        '200':
+          description: Staff accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Staff]
+      operationId: inviteStaff
+      description: |
+        Requires staff:manage permission. Creates an invitation, not an active
+        account. Managers cannot invite owner accounts. There is no public
+        self-registration. Invitation tokens are single-use, stored hashed,
+        and expire after 72 hours.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffInvitationRequest'
+      responses:
+        '201':
+          description: Invitation created and delivery queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/staff/{staffId}:
+    parameters:
+      - name: staffId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Staff]
+      operationId: updateStaff
+      description: |
+        Requires staff:manage permission. The server enforces role hierarchy,
+        prevents self-deactivation, and prevents deactivation or demotion of the
+        last active owner. A staff account must already have driver qualifications
+        before its role can be changed to driver.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                role: { $ref: '#/components/schemas/UserRole' }
+                branch: { type: string, maxLength: 120 }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Updated staff account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/staff/invitations/{invitationId}/resend:
+    parameters:
+      - name: invitationId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Staff]
+      operationId: resendStaffInvitation
+      description: Requires staff:manage permission. Revokes the prior token and issues a new single-use token with a fresh 72-hour expiry.
+      responses:
+        '200':
+          description: Invitation delivery re-queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+  /api/v1/staff/invitations/{invitationId}:
+    parameters:
+      - name: invitationId
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Staff]
+      operationId: revokeStaffInvitation
+      description: Requires staff:manage permission. Revokes an unaccepted invitation.
+      responses:
+        '200':
+          description: Invitation revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcknowledgementEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/audit:
+    get:
+      tags: [Audit]
+      operationId: listAuditEntries
+      description: |
+        Owner only. Audit entries are append-only and generated by the server for
+        successful state-changing API operations. Entries record the actor,
+        operation, entity, and request id; request bodies and secrets are not stored.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: actorId
+          schema: { type: string }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: entity
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [createdAt:desc], default: createdAt:desc }
+      responses:
+        '200':
+          description: Filtered audit trail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /contact:
+    post:
+      tags: [Contact]
+      operationId: submitContactMessage
+      security: []
+      description: |
+        Public, validated contact form with a honeypot field. Limit is five
+        submissions per 15 minutes per client IP. Messages are delivered to the
+        configured CONTACT_INBOX address, defaulting to hello@autohire.ke.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone, message]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                email: { type: string, format: email }
+                phone: { type: string, pattern: '^254[17][0-9]{8}$' }
+                message: { type: string, minLength: 10, maxLength: 5000 }
+                companyWebsite: { type: string, maxLength: 0 }
+      responses:
+        '201':
+          description: Message accepted for delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactAckEnvelope'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    GuestBookingToken:
+      type: apiKey
+      in: cookie
+      name: booking_access
+  parameters:
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      description: Page size, default 50 and maximum 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    PageCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned by the prior page; omit for the first page.
+      schema: { type: string, minLength: 1, maxLength: 512 }
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      schema: { type: string }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional. Repeated requests with the same key and payload return the original result.
+      schema: { type: string, minLength: 16, maxLength: 128 }
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { const: false }
+        data: { type: 'null' }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    SuccessEnvelope:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { const: true }
+        data: {}
+        error: { type: 'null' }
+    UserRole:
+      type: string
+      enum: [owner, manager, agent, driver, mechanic]
+    User:
+      type: object
+      required: [id, name, email, phone, role]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        branch: { type: string }
+        active: { type: boolean }
+        lastLogin: { type: string, format: date-time }
+    UserEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/User' }
+    AuthSessionEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [accessToken, user]
+              properties:
+                accessToken: { type: string }
+                user: { $ref: '#/components/schemas/User' }
+    AccessTokenEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [accessToken]
+              properties:
+                accessToken: { type: string }
+    LogoutEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                loggedOut: { type: boolean }
+                accepted: { type: boolean }
+    AcknowledgementEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: { const: true }
+    DeleteEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [deleted]
+              properties:
+                deleted: { const: true }
+    HealthEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [status]
+              properties:
+                status: { const: ok }
+    VehicleStatus:
+      type: string
+      description: booked is a derived current status and cannot be set by fleet operators.
+      enum: [available, booked, maintenance, inactive]
+    VehicleManagementStatus:
+      type: string
+      enum: [available, maintenance, inactive]
+    Vehicle:
+      type: object
+      required: [id, make, model, year, registration, seats, transmission, ratePerDay, status]
+      properties:
+        id: { type: string }
+        make: { type: string }
+        model: { type: string }
+        category: { type: string }
+        year: { type: integer, minimum: 1900 }
+        registration: { type: string }
+        seats: { type: integer, minimum: 1 }
+        transmission: { type: string, enum: [automatic, manual] }
+        ratePerDay: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/VehicleStatus' }
+    VehicleInput:
+      type: object
+      required: [make, model, year, registration, seats, transmission, ratePerDay]
+      properties:
+        make: { type: string, minLength: 1 }
+        model: { type: string, minLength: 1 }
+        category: { type: string }
+        year: { type: integer, minimum: 1900 }
+        registration: { type: string, minLength: 1 }
+        seats: { type: integer, minimum: 1 }
+        transmission: { type: string, enum: [automatic, manual] }
+        ratePerDay: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/VehicleManagementStatus' }
+    VehiclePatch:
+      type: object
+      minProperties: 1
+      properties:
+        make: { type: string, minLength: 1 }
+        model: { type: string, minLength: 1 }
+        category: { type: string }
+        year: { type: integer, minimum: 1900 }
+        registration: { type: string, minLength: 1 }
+        seats: { type: integer, minimum: 1 }
+        transmission: { type: string, enum: [automatic, manual] }
+        ratePerDay: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/VehicleManagementStatus' }
+    VehicleListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Vehicle' }
+                nextCursor: { type: [string, 'null'] }
+    VehicleEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Vehicle' }
+    MaintenanceWindow:
+      type: object
+      required: [id, vehicleId, startAt, endAt, reason]
+      properties:
+        id: { type: string }
+        vehicleId: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        reason: { type: string }
+    MaintenanceWindowInput:
+      type: object
+      required: [vehicleId, startAt, endAt, reason]
+      properties:
+        vehicleId: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    MaintenanceWindowPatch:
+      type: object
+      minProperties: 1
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    MaintenanceWindowListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/MaintenanceWindow' }
+                nextCursor: { type: [string, 'null'] }
+    MaintenanceWindowEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/MaintenanceWindow' }
+    DriveMode:
+      type: string
+      enum: [self_drive, chauffeur]
+    PaymentMethod:
+      type: string
+      enum: [mpesa_online, mpesa_manual, cash, bank, corporate]
+    QuoteRequest:
+      type: object
+      required: [vehicleId, pickupAt, returnAt, pickupLocation, mode, extras]
+      properties:
+        vehicleId: { type: string }
+        pickupAt: { type: string, format: date-time }
+        returnAt: { type: string, format: date-time }
+        pickupLocation: { type: string, minLength: 1, maxLength: 300 }
+        mode: { $ref: '#/components/schemas/DriveMode' }
+        driverLocation: { type: string, enum: [in_town, upcountry] }
+        extras:
+          type: array
+          items: { type: string }
+    PricingSnapshot:
+      type: object
+      required: [baseDays, baseRateKes, baseAmountKes, chauffeurFeeKes, extras, vatRate, vatAmountKes, totalDueKes, refundableDepositKes]
+      properties:
+        baseDays: { type: integer, minimum: 1 }
+        baseRateKes: { type: integer, minimum: 0 }
+        baseAmountKes: { type: integer, minimum: 0 }
+        chauffeurFeeKes: { type: integer, minimum: 0 }
+        driverLocation: { type: string, enum: [in_town, upcountry] }
+        extras:
+          type: array
+          items:
+            type: object
+            required: [code, label, amountKes]
+            properties:
+              code: { type: string }
+              label: { type: string }
+              amountKes: { type: integer, minimum: 0 }
+        vatRate: { const: 16 }
+        vatAmountKes: { type: integer, minimum: 0 }
+        totalDueKes: { type: integer, minimum: 0 }
+        refundableDepositKes: { type: integer, minimum: 0 }
+    QuoteEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [pricingSnapshot, currency]
+              properties:
+                pricingSnapshot: { $ref: '#/components/schemas/PricingSnapshot' }
+                currency: { const: KES }
+    BookingStatus:
+      type: string
+      description: |
+        Canonical backend states are reserved, confirmed, checked_out, overdue,
+        completed, cancelled, and expired. Legal transitions are
+        reserved -> confirmed, cancelled, or expired; confirmed -> checked_out,
+        completed (assigned chauffeur trip), or cancelled; checked_out ->
+        overdue or completed; overdue -> completed. Verified payment or
+        offline approval confirms a booking; cancellation requires an
+        authorized action; expiry and overdue are server/system transitions;
+        handover or assigned-driver trip completion completes a booking.
+        Cancelled, expired, and completed are terminal.
+      enum: [reserved, confirmed, checked_out, overdue, completed, cancelled, expired]
+    Booking:
+      type: object
+      required: [id, reference, vehicleId, customerId, status, pickupAt, returnAt, totalKes]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        vehicleId: { type: string }
+        customerId: { type: string }
+        customerName: { type: string }
+        customerPhone: { type: string }
+        customerEmail: { type: string, format: email }
+        customerIdNumber: { type: string }
+        pickupLocation: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        pendingApproval: { type: boolean }
+        pickupAt: { type: string, format: date-time }
+        returnAt: { type: string, format: date-time }
+        totalKes: { type: integer, minimum: 0 }
+        mode: { $ref: '#/components/schemas/DriveMode' }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        holdExpiresAt: { type: string, format: date-time }
+        createdById: { type: string, readOnly: true }
+        driverId: { type: string, readOnly: true }
+        pricingSnapshot: { $ref: '#/components/schemas/PricingSnapshot' }
+        payments:
+          type: array
+          items: { $ref: '#/components/schemas/BookingPayment' }
+        driver: { $ref: '#/components/schemas/User' }
+        driverTripStatus: { type: string, enum: [en_route_to_pickup, customer_onboard, trip_completed] }
+        inspections:
+          type: array
+          items: { $ref: '#/components/schemas/BookingInspection' }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/BookingEvent' }
+        accruedLateFeeKes: { type: integer, minimum: 0 }
+    BookingEvent:
+      type: object
+      required: [id, type, actor, note, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        actor: { type: string }
+        note: { type: string }
+        createdAt: { type: string, format: date-time }
+    BookingPayment:
+      type: object
+      required: [id, method, amountKes, status, reference, createdAt]
+      properties:
+        id: { type: string }
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        amountKes: { type: integer, minimum: 0 }
+        status: { type: string, enum: [pending, paid, failed, refund_pending, refunded] }
+        reference: { type: string }
+        createdAt: { type: string, format: date-time }
+    RefundEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id, paymentId, amountKes, status, createdAt]
+              properties:
+                id: { type: string }
+                paymentId: { type: string }
+                amountKes: { type: integer, minimum: 0 }
+                status: { type: string, enum: [pending, refunded, failed] }
+                reason: { type: string }
+                createdAt: { type: string, format: date-time }
+    BookingInspection:
+      type: object
+      required: [id, type, odometer, fuelLevel, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [check_out, check_in] }
+        odometer: { type: integer, minimum: 0 }
+        fuelLevel: { type: string, enum: [empty, quarter, half, three_quarters, full] }
+        createdAt: { type: string, format: date-time }
+        notes: { type: string }
+        photos:
+          type: array
+          items: { type: string, format: uri-reference }
+        signatureConfirmed: { type: boolean }
+        criticalDefect: { type: boolean }
+        settlement:
+          allOf:
+            - $ref: '#/components/schemas/Settlement'
+          description: Present on check-in inspections.
+    BookingCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/QuoteRequest'
+        - type: object
+          required: [customerName, customerPhone, customerEmail, customerIdNumber, paymentMethod]
+          properties:
+            customerName: { type: string, minLength: 2, maxLength: 120 }
+            customerPhone: { type: string, pattern: '^254[17][0-9]{8}$' }
+            customerEmail: { type: string, format: email }
+            customerIdNumber: { type: string, minLength: 4, maxLength: 50 }
+            paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+    BookingListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Booking' }
+                nextCursor: { type: [string, 'null'] }
+    BookingEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Booking' }
+    GuestCheckoutEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [booking, vehicle]
+              properties:
+                booking: { $ref: '#/components/schemas/GuestCheckoutBooking' }
+                vehicle: { $ref: '#/components/schemas/GuestCheckoutVehicle' }
+    GuestCheckoutBooking:
+      type: object
+      required: [id, reference, vehicleId, status, pickupAt, returnAt, totalKes]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        vehicleId: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        pendingApproval: { type: boolean }
+        pickupAt: { type: string, format: date-time }
+        returnAt: { type: string, format: date-time }
+        totalKes: { type: integer, minimum: 0 }
+        mode: { $ref: '#/components/schemas/DriveMode' }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        holdExpiresAt: { type: string, format: date-time }
+        pricingSnapshot: { $ref: '#/components/schemas/PricingSnapshot' }
+    GuestVehicle:
+      type: object
+      required: [id, make, model, registration]
+      properties:
+        id: { type: string }
+        make: { type: string }
+        model: { type: string }
+        registration: { type: string }
+    GuestCheckoutVehicle:
+      allOf:
+        - $ref: '#/components/schemas/GuestVehicle'
+        - type: object
+          required: [ratePerDay]
+          properties:
+            ratePerDay: { type: integer, minimum: 0 }
+    GuestBookingAccessEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/GuestBookingSummary'
+                - type: object
+                  required: [accessToken]
+                  properties:
+                    accessToken: { type: string, minLength: 32 }
+    GuestBookingSummary:
+      type: object
+      required: [booking, vehicle, cancellationAllowed]
+      properties:
+        booking: { $ref: '#/components/schemas/GuestBooking' }
+        vehicle: { $ref: '#/components/schemas/GuestVehicle' }
+        cancellationAllowed: { type: boolean }
+    GuestBooking:
+      allOf:
+        - $ref: '#/components/schemas/GuestCheckoutBooking'
+        - type: object
+          properties:
+            customerName: { type: string }
+            customerPhone: { type: string }
+            payments:
+              type: array
+              items: { $ref: '#/components/schemas/BookingPayment' }
+    GuestBookingSummaryEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/GuestBookingSummary' }
+    CancellationEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [cancelled]
+              properties:
+                cancelled: { const: true }
+    HandoverRequest:
+      type: object
+      required: [odometer, fuelLevel, notes, photos, signatureConfirmed, criticalDefect]
+      properties:
+        odometer: { type: integer, minimum: 0 }
+        fuelLevel: { type: string, enum: [empty, quarter, half, three_quarters, full] }
+        notes: { type: string, maxLength: 1000 }
+        photos:
+          type: array
+          maxItems: 10
+          items: { type: string, format: uri-reference }
+        signatureConfirmed: { const: true }
+        criticalDefect: { type: boolean }
+    Settlement:
+      type: object
+      required: [graceHours, lateHours, lateFeeKes, odometerDifferenceKm, includedMileageKm, excessMileageKm, excessMileageRateKes, excessMileageChargeKes, totalKes]
+      properties:
+        graceHours: { type: number, minimum: 0 }
+        lateHours: { type: number, minimum: 0 }
+        lateFeeKes: { type: integer, minimum: 0 }
+        odometerDifferenceKm: { type: integer, minimum: 0 }
+        includedMileageKm: { type: integer, minimum: 0 }
+        excessMileageKm: { type: integer, minimum: 0 }
+        excessMileageRateKes: { type: integer, minimum: 0 }
+        excessMileageChargeKes: { type: integer, minimum: 0 }
+        totalKes: { type: integer, minimum: 0 }
+    SettlementEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Settlement' }
+    StkInitiationEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [paymentId, maskedPhone]
+              properties:
+                paymentId: { type: string }
+                maskedPhone: { type: string }
+    StkStatusEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [outcome, amountDueKes]
+              properties:
+                outcome: { type: string, enum: [pending, confirmed, failed, manual_refund] }
+                amountDueKes: { type: integer, minimum: 0 }
+                paidAmountKes: { type: integer, minimum: 0 }
+                message: { type: string }
+    Driver:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [status, languages, licenceClass, licenceExpiresAt, psvExpiresAt, rating]
+          properties:
+            role: { const: driver }
+            status: { type: string, enum: [available, assigned, off_duty] }
+            languages:
+              type: array
+              items: { type: string }
+            licenceClass: { type: string }
+            licenceExpiresAt: { type: string, format: date-time }
+            psvExpiresAt: { type: string, format: date-time }
+            rating: { type: number, minimum: 0, maximum: 5 }
+    DriverListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Driver' }
+                nextCursor: { type: [string, 'null'] }
+    AvailableDriversEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [drivers, autoAssignDriverId]
+              properties:
+                drivers:
+                  type: array
+                  items: { $ref: '#/components/schemas/Driver' }
+                autoAssignDriverId:
+                  type: [string, 'null']
+    GeoJsonPoint:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { const: Point }
+        coordinates:
+          type: array
+          prefixItems:
+            - type: number
+              description: Longitude
+            - type: number
+              description: Latitude
+          minItems: 2
+          maxItems: 2
+    Mechanic:
+      type: object
+      required: [id, name, phone, whatsapp, county, town, type, specialties, callOutRateKes, location]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        phone: { type: string }
+        whatsapp: { type: string }
+        county: { type: string }
+        town: { type: string }
+        type: { type: string, enum: [in_house, partner_garage, towing] }
+        specialties:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentCategory' }
+        callOutRateKes: { type: integer, minimum: 0 }
+        location: { $ref: '#/components/schemas/GeoJsonPoint' }
+    MechanicInput:
+      type: object
+      required: [name, phone, whatsapp, county, town, type, specialties, callOutRateKes, location]
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: string, minLength: 1 }
+        whatsapp: { type: string, minLength: 1 }
+        county: { type: string, minLength: 1 }
+        town: { type: string, minLength: 1 }
+        type: { type: string, enum: [in_house, partner_garage, towing] }
+        specialties:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentCategory' }
+        callOutRateKes: { type: integer, minimum: 0 }
+        location: { $ref: '#/components/schemas/GeoJsonPoint' }
+    MechanicEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Mechanic' }
+    MechanicListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Mechanic' }
+                nextCursor: { type: [string, 'null'] }
+    NearbyMechanicListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/Mechanic'
+                  - type: object
+                    required: [distanceKm]
+                    properties:
+                      distanceKm: { type: number, minimum: 0 }
+    IncidentCategory:
+      type: string
+      enum: [flat_tyre, battery, overheating, accident, strange_noise]
+    IncidentDispatchType:
+      type: string
+      enum: [closest_partner, in_house_rescue, replacement_vehicle]
+    Incident:
+      type: object
+      required: [id, reference, status, description, createdAt, category, location, locationText, immobilising, photos, source]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        status: { type: string, enum: [open, awaiting_replacement, dispatched, resolved] }
+        description: { type: string }
+        createdAt: { type: string, format: date-time }
+        category: { $ref: '#/components/schemas/IncidentCategory' }
+        location: { $ref: '#/components/schemas/GeoJsonPoint' }
+        locationText: { type: string }
+        vehicleId: { type: string }
+        immobilising: { type: boolean }
+        photos:
+          type: array
+          items: { type: string, format: uri-reference }
+        source: { type: string, enum: [driver, customer, desk] }
+        dispatch:
+          type: object
+          properties:
+            type: { $ref: '#/components/schemas/IncidentDispatchType' }
+            mechanicId: { type: string }
+            vehicleId: { type: string }
+            createdAt: { type: string, format: date-time }
+        resolution: { type: string }
+    IncidentCreateRequest:
+      type: object
+      required: [category, description, location, locationText, immobilising]
+      properties:
+        category: { $ref: '#/components/schemas/IncidentCategory' }
+        description: { type: string, minLength: 1, maxLength: 3000 }
+        location:
+          type: string
+          description: GeoJSON Point serialized as JSON in the multipart field.
+        locationText: { type: string, minLength: 1, maxLength: 300 }
+        vehicleId: { type: string }
+        immobilising: { type: string, enum: ['true', 'false'] }
+        photos:
+          type: array
+          maxItems: 10
+          description: Multipart photos; JPEG, PNG, or WebP, maximum 5 MiB per file.
+          items: { type: string, format: binary, description: Image up to 5 MiB. }
+    IncidentEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Incident' }
+    IncidentListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Incident' }
+                nextCursor: { type: [string, 'null'] }
+    DashboardEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [metrics, pickups, returns, fleetStatus, recentActivity]
+              properties:
+                metrics:
+                  type: object
+                  additionalProperties: { type: [integer, 'null'] }
+                  properties:
+                    vehiclesOutToday: { type: [integer, 'null'] }
+                    pickupsDueToday: { type: [integer, 'null'] }
+                    returnsDueToday: { type: [integer, 'null'] }
+                    overdueVehicles: { type: [integer, 'null'] }
+                    pendingApprovals: { type: [integer, 'null'] }
+                    activeBreakdowns: { type: [integer, 'null'] }
+                    monthlyRevenue: { type: [integer, 'null'] }
+                cardErrors:
+                  type: object
+                  additionalProperties: { type: string }
+                pickups:
+                  type: array
+                  items: { $ref: '#/components/schemas/Booking' }
+                returns:
+                  type: array
+                  items: { $ref: '#/components/schemas/Booking' }
+                fleetStatus:
+                  type: object
+                  required: [available, rented, reserved, maintenance]
+                  properties:
+                    available: { type: integer, minimum: 0 }
+                    rented: { type: integer, minimum: 0 }
+                    reserved: { type: integer, minimum: 0 }
+                    maintenance: { type: integer, minimum: 0 }
+                recentActivity:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, kind, reference, timestamp]
+                    properties:
+                      id: { type: string }
+                      kind: { type: string, enum: [booking, handover, incident] }
+                      reference: { type: string }
+                      timestamp: { type: string, format: date-time }
+    NotificationCountsEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [pendingApprovals, openIncidents]
+              properties:
+                pendingApprovals: { type: integer, minimum: 0 }
+                openIncidents: { type: integer, minimum: 0 }
+    SearchResultsEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                required: [id, type, title, subtitle, href]
+                properties:
+                  id: { type: string }
+                  type: { type: string, enum: [vehicle, booking, customer] }
+                  title: { type: string }
+                  subtitle: { type: string }
+                  href: { type: string }
+    StaffInvitationRequest:
+      type: object
+      required: [name, email, phone, role, branch]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, format: email }
+        phone: { type: string, pattern: '^254[17][0-9]{8}$' }
+        role: { $ref: '#/components/schemas/UserRole' }
+        branch: { type: string, minLength: 1, maxLength: 120 }
+        driverProfile:
+          type: object
+          description: Required when role is driver. New driver accounts start available with a rating of 0.
+          required: [languages, licenceClass, licenceExpiresAt, psvExpiresAt]
+          properties:
+            languages:
+              type: array
+              minItems: 1
+              maxItems: 10
+              items: { type: string, minLength: 1, maxLength: 40 }
+            licenceClass: { type: string, minLength: 1, maxLength: 20 }
+            licenceExpiresAt: { type: string, format: date-time }
+            psvExpiresAt: { type: string, format: date-time }
+    StaffMember:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [branch, active]
+          properties:
+            branch: { type: string }
+            active: { type: boolean }
+    StaffEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/StaffMember' }
+    StaffListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/StaffMember' }
+                nextCursor: { type: [string, 'null'] }
+    InvitationEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id, email, role, expiresAt]
+              properties:
+                id: { type: string }
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/UserRole' }
+                expiresAt: { type: string, format: date-time }
+    AuditListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, actor, action, entity, createdAt]
+                    properties:
+                      id: { type: string }
+                      actorId: { type: string }
+                      actor: { type: string }
+                      action: { type: string }
+                      entity: { type: string }
+                      requestId: { type: string }
+                      createdAt: { type: string, format: date-time }
+                      before: { type: object, additionalProperties: true }
+                      after: { type: object, additionalProperties: true }
+                nextCursor: { type: [string, 'null'] }
+    UploadEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri-reference }
+    ContactAckEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [received]
+              properties:
+                received: { const: true }
