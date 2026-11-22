@@ -12,7 +12,7 @@ function idString(value) {
 
 function vehicleView(vehicle, status = vehicle.status) {
   const value = typeof vehicle.toObject === 'function' ? vehicle.toObject() : vehicle
-  const { _id, __v, registrationKey, availabilityRevision, ...fields } = value
+  const { _id, __v, registrationKey, availabilityRevision, imagePublicId, ...fields } = value
   return { id: idString(_id), ...fields, status }
 }
 
@@ -24,7 +24,7 @@ function maintenanceView(window) {
 
 function bookingView(booking) {
   const value = typeof booking.toObject === 'function' ? booking.toObject() : booking
-  const { _id, __v, driverId, idempotencyKey, idempotencyRequestHash, pendingInspectionPhotos, ...fields } = value
+  const { _id, __v, driverId, idempotencyKey, idempotencyRequestHash, guestHoldKey, guestHoldRequestHash, pendingInspectionPhotos, ...fields } = value
   delete fields.licence
   for (const inspection of fields.inspections ?? []) inspection.photos = (inspection.photos ?? []).map((photo) => photo.url)
   const driver = driverId && typeof driverId === 'object' && driverId.name
@@ -45,7 +45,7 @@ function bookingView(booking) {
     ...(fields.vehicleId && typeof fields.vehicleId === 'object' && fields.vehicleId.make
       ? { vehicleName: `${fields.vehicleId.make} ${fields.vehicleId.model}` }
       : {}),
-    createdById: idString(fields.createdById),
+    ...(fields.createdById ? { createdById: idString(fields.createdById) } : {}),
     ...(driverId ? { driverId: idString(driverId) } : {}),
     ...(driver ? { driver } : {}),
   }
@@ -257,6 +257,16 @@ const fleetRepository = {
     })
   },
 
+  async updateVehicleImage(id, image) {
+    const vehicle = await Vehicle.findById(id).select('+imagePublicId')
+    if (!vehicle) return null
+    const previousPublicId = vehicle.imagePublicId
+    vehicle.imageUrl = image.url
+    vehicle.imagePublicId = image.publicId
+    await vehicle.save()
+    return { vehicle: vehicleView(vehicle), previousPublicId }
+  },
+
   async listMaintenanceWindows({ from, to, limit, cursor }) {
     const position = parseCursor(cursor, ['startAt', 'id'])
     if (position && (!Number.isFinite(Date.parse(position.startAt)) || !mongoose.Types.ObjectId.isValid(position.id))) {
@@ -401,6 +411,75 @@ const fleetRepository = {
     }
   },
 
+  async createGuestHold(input, quoteForVehicle, idempotencyKey, now = new Date()) {
+    const payloadHash = requestHash(input)
+    try {
+      return await withVehicleTransaction(input.vehicleId, async (vehicle, session) => {
+        const prior = await Booking.findOne({ guestHoldKey: idempotencyKey })
+          .select('+guestHoldKey +guestHoldRequestHash')
+          .session(session)
+          .lean()
+        if (prior) {
+          if (prior.guestHoldRequestHash !== payloadHash) {
+            throw new AppError(409, 'IDEMPOTENCY_CONFLICT', 'This request key was already used with different booking details')
+          }
+          return bookingView(prior)
+        }
+        if (vehicle.status !== 'available') {
+          throw new AppError(409, 'VEHICLE_UNAVAILABLE', 'This vehicle is not available for reservation')
+        }
+        const overlap = bookingOverlapQuery(input.pickupAt, input.returnAt, now)
+        const [bookingConflict, maintenanceConflict, incidentConflict] = await Promise.all([
+          Booking.exists({ vehicleId: vehicle._id, ...overlap }).session(session),
+          MaintenanceWindow.exists({
+            vehicleId: vehicle._id,
+            startAt: { $lt: input.returnAt },
+            endAt: { $gt: input.pickupAt },
+          }).session(session),
+          Incident.exists({ 'dispatch.vehicleId': vehicle._id, status: { $in: ['awaiting_replacement', 'dispatched'] } }).session(session),
+        ])
+        if (bookingConflict || maintenanceConflict || incidentConflict) {
+          throw new AppError(409, 'VEHICLE_UNAVAILABLE', 'This vehicle is not available for those dates')
+        }
+        const quote = quoteForVehicle(vehicle)
+        const reference = `BK-${Date.now().toString(36).toUpperCase()}-${randomBytes(4).toString('hex').toUpperCase()}`
+        const [booking] = await Booking.create([{
+          reference,
+          vehicleId: vehicle._id,
+          customerId: `guest-${randomUUID()}`,
+          customerName: 'Guest',
+          customerPhone: 'pending',
+          customerEmail: 'pending',
+          customerIdNumber: 'pending',
+          pickupLocation: input.pickupLocation,
+          status: 'reserved',
+          pendingApproval: false,
+          pickupAt: input.pickupAt,
+          returnAt: input.returnAt,
+          totalKes: quote.pricingSnapshot.totalDueKes,
+          pricingSnapshot: quote.pricingSnapshot,
+          mode: input.mode,
+          paymentMethod: 'mpesa_online',
+          holdExpiresAt: new Date(now.getTime() + 15 * 60_000),
+          guestHoldKey: idempotencyKey,
+          guestHoldRequestHash: payloadHash,
+          events: [bookingEvent('booking.reserved', 'Guest', 'Public booking hold created', now)],
+        }], { session })
+        return bookingView(booking)
+      })
+    } catch (error) {
+      if (error.code !== 11000) throw error
+      const prior = await Booking.findOne({ guestHoldKey: idempotencyKey })
+        .select('+guestHoldKey +guestHoldRequestHash')
+        .lean()
+      if (!prior) throw error
+      if (prior.guestHoldRequestHash !== payloadHash) {
+        throw new AppError(409, 'IDEMPOTENCY_CONFLICT', 'This request key was already used with different booking details')
+      }
+      return bookingView(prior)
+    }
+  },
+
   async listBookings(query, now = new Date()) {
     await expireHolds(now)
     await expireOverdueBookings(now)
@@ -492,7 +571,7 @@ const fleetRepository = {
       if (booking.status !== 'reserved' || !booking.pendingApproval) {
         throw new AppError(409, 'INVALID_STATUS', 'This booking is not awaiting offline approval')
       }
-      if (booking.createdById.toString() === actor.id) {
+      if (booking.createdById && booking.createdById.toString() === actor.id) {
         throw new AppError(403, 'SELF_APPROVAL_FORBIDDEN', 'You cannot approve your own booking')
       }
       if (input.paymentMethod !== booking.paymentMethod) {
@@ -563,4 +642,4 @@ const fleetRepository = {
   },
 }
 
-module.exports = { fleetRepository, bookingOverlapQuery, bookingView }
+module.exports = { fleetRepository, bookingOverlapQuery, bookingView, withVehicleTransaction }

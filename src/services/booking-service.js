@@ -69,6 +69,16 @@ function createBookingService({ repository }) {
       return calculateQuote(request, vehicle.ratePerDay)
     },
 
+    createGuestHold(request, idempotencyKey, now = new Date()) {
+      validateBookingDates(request, now)
+      return repository.createGuestHold(
+        request,
+        (vehicle) => calculateQuote(request, vehicle.ratePerDay),
+        idempotencyKey,
+        now,
+      )
+    },
+
     createBooking(request, actor, idempotencyKey, now = new Date()) {
       validateBookingDates(request, now)
       return repository.createBooking(

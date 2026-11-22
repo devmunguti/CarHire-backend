@@ -1,6 +1,6 @@
 const { createHash, randomBytes, randomUUID } = require('node:crypto')
 const mongoose = require('mongoose')
-const { Booking, GuestAccess, Payment, Refund, Vehicle } = require('../models')
+const { Booking, BookingExtension, GuestAccess, Payment, Refund, Vehicle } = require('../models')
 const { AppError } = require('../lib/errors')
 
 const exchangeTokenLifetimeMs = 15 * 60_000
@@ -36,6 +36,7 @@ function checkoutView(booking, vehicle) {
       model: vehicle.model,
       registration: vehicle.registration,
       ratePerDay: vehicle.ratePerDay,
+      imageUrl: vehicle.imageUrl,
     },
   }
 }
@@ -63,6 +64,7 @@ function guestSummary(booking, vehicle, now = new Date()) {
       make: vehicle.make,
       model: vehicle.model,
       registration: vehicle.registration,
+      imageUrl: vehicle.imageUrl,
     },
     cancellationAllowed: ['reserved', 'confirmed'].includes(booking.status)
       && booking.pickupAt.getTime() - now.getTime() >= 48 * 60 * 60_000,
@@ -206,7 +208,19 @@ function createGuestBookingService({ fileStore }) {
       if (!booking) throw new AppError(404, 'GUEST_ACCESS_INVALID', 'Booking link unavailable')
       const vehicle = await Vehicle.findById(booking.vehicleId).lean()
       if (!vehicle) throw new AppError(404, 'GUEST_ACCESS_INVALID', 'Booking link unavailable')
-      return guestSummary(booking, vehicle, now)
+      const extension = await BookingExtension.findOne({ bookingId: booking._id, status: 'pending' }).lean()
+      return {
+        ...guestSummary(booking, vehicle, now),
+        ...(extension ? {
+          extensionRequest: {
+            currentReturnAt: extension.currentReturnAt,
+            requestedReturnAt: extension.requestedReturnAt,
+            reason: extension.reason,
+            feeKes: extension.feeKes,
+            status: extension.status,
+          },
+        } : {}),
+      }
     },
 
     async getAuthorizedGuestBooking(reference, sessionToken, now = new Date()) {

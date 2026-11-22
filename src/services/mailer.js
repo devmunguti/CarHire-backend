@@ -32,16 +32,16 @@ function createMailer(env) {
       const safeRole = escapeHtml(role)
       return send({
         to,
-        subject: 'Your AutoHire KE staff invitation',
-        text: `Hello ${name}, you have been invited to join AutoHire KE as ${role}. Accept your invitation: ${link}`,
-        html: `<p>Hello ${safeName},</p><p>You have been invited to join AutoHire KE as ${safeRole}.</p><p><a href="${escapeHtml(link)}">Accept your invitation</a></p>`,
+        subject: 'Your Gari Poa staff invitation',
+        text: `Hello ${name}, you have been invited to join Gari Poa as ${role}. Accept your invitation: ${link}`,
+        html: `<p>Hello ${safeName},</p><p>You have been invited to join Gari Poa as ${safeRole}.</p><p><a href="${escapeHtml(link)}">Accept your invitation</a></p>`,
       })
     },
     sendPasswordReset({ to, name, link }) {
       const safeName = escapeHtml(name)
       return send({
         to,
-        subject: 'Reset your AutoHire KE password',
+        subject: 'Reset your Gari Poa password',
         text: `Hello ${name}, reset your password within 30 minutes: ${link}`,
         html: `<p>Hello ${safeName},</p><p><a href="${escapeHtml(link)}">Reset your password</a>. This link expires in 30 minutes.</p>`,
       })
@@ -54,7 +54,7 @@ function createMailer(env) {
       return send({
         to,
         replyTo: email,
-        subject: `AutoHire KE contact message from ${name}`,
+        subject: `Gari Poa contact message from ${name}`,
         text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\n\n${message}`,
         html: `<p><strong>Name:</strong> ${safeName}</p><p><strong>Email:</strong> ${safeEmail}</p><p><strong>Phone:</strong> ${safePhone}</p><p>${safeMessage}</p>`,
       })

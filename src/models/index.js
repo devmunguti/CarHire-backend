@@ -67,6 +67,8 @@ const vehicleSchema = new mongoose.Schema({
   seats: { type: Number, required: true, min: 1 },
   transmission: { type: String, required: true, enum: ['automatic', 'manual'] },
   ratePerDay: { type: Number, required: true, min: 0 },
+  imageUrl: { type: String, trim: true },
+  imagePublicId: { type: String, select: false },
   status: { type: String, required: true, enum: ['available', 'maintenance', 'inactive'], default: 'available' },
   availabilityRevision: { type: Number, required: true, default: 0, select: false },
 }, { timestamps: true })
@@ -96,7 +98,9 @@ const bookingSchema = new mongoose.Schema({
   mode: { type: String, required: true, enum: ['self_drive', 'chauffeur'] },
   paymentMethod: { type: String, required: true, enum: ['mpesa_online', 'mpesa_manual', 'cash', 'bank', 'corporate'] },
   holdExpiresAt: { type: Date, required: true },
-  createdById: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' },
+  createdById: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  guestHoldKey: { type: String, select: false },
+  guestHoldRequestHash: { type: String, select: false },
   driverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   driverTripStatus: { type: String, enum: ['en_route_to_pickup', 'customer_onboard', 'trip_completed'] },
   accruedLateFeeKes: { type: Number, min: 0, default: 0 },
@@ -177,6 +181,22 @@ const guestAccessSchema = new mongoose.Schema({
   revokedAt: { type: Date },
 }, { timestamps: true })
 
+const bookingExtensionSchema = new mongoose.Schema({
+  bookingId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Booking' },
+  reference: { type: String, required: true },
+  currentReturnAt: { type: Date, required: true },
+  requestedReturnAt: { type: Date, required: true },
+  reason: { type: String, required: true, trim: true, maxlength: 1000 },
+  status: { type: String, required: true, enum: ['pending', 'approved', 'declined'], default: 'pending' },
+  feeKes: { type: Number, min: 0 },
+  pricingSnapshot: { type: mongoose.Schema.Types.Mixed },
+  paymentReference: { type: String, trim: true, maxlength: 120 },
+  paymentMethod: { type: String, enum: ['cash', 'mpesa_manual', 'bank'] },
+  reviewNote: { type: String, trim: true, maxlength: 1000 },
+  reviewedById: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  reviewedAt: { type: Date },
+}, { timestamps: true })
+
 const paymentSchema = new mongoose.Schema({
   paymentId: { type: String, required: true },
   bookingId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Booking' },
@@ -210,7 +230,7 @@ const refundSchema = new mongoose.Schema({
   status: { type: String, required: true, enum: ['pending', 'refunded', 'failed'], default: 'pending' },
   reason: { type: String, required: true, trim: true, maxlength: 1000 },
   providerReference: { type: String },
-  createdById: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' },
+  createdById: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   processedById: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   idempotencyKey: { type: String, select: false },
   idempotencyRequestHash: { type: String, select: false },
@@ -293,6 +313,7 @@ module.exports = {
   MaintenanceWindow: model('MaintenanceWindow', maintenanceWindowSchema),
   Booking: model('Booking', bookingSchema),
   GuestAccess: model('GuestAccess', guestAccessSchema),
+  BookingExtension: model('BookingExtension', bookingExtensionSchema),
   Payment: model('Payment', paymentSchema),
   PaymentEvent: model('PaymentEvent', paymentEventSchema),
   Refund: model('Refund', refundSchema),

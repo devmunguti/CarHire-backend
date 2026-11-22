@@ -11,6 +11,8 @@ const fleetMigration = require('../migrations/20261122000001-fleet-availability'
 const bookingMigration = require('../migrations/20261122000002-booking-lifecycle')
 const paymentMigration = require('../migrations/20261122000003-guest-checkout-payments')
 const operationsMigration = require('../migrations/20261122000004-phase-five-operations')
+const publicBookingMigration = require('../migrations/20261123000000-public-booking-and-extensions')
+const { hashGuestToken } = require('../src/services/guest-booking-service')
 
 configureTestEnvironment()
 
@@ -21,6 +23,8 @@ let Vehicle
 let Booking
 let Mechanic
 let Incident
+let GuestAccess
+let BookingExtension
 let server
 let mongo
 let uploadDirectory
@@ -29,8 +33,7 @@ before(async () => {
   process.env.MONGOMS_VERSION ||= '4.4.29'
   ;({ MongoMemoryReplSet } = require('mongodb-memory-server-core'))
   mongo = await MongoMemoryReplSet.create({
-    replSet: { count: 1, storageEngine: 'wiredTiger' },
-    instance: { launchTimeout: 60000 },
+    replSet: { count: 1, storageEngine: 'wiredTiger', launchTimeout: 60000 },
   })
   process.env.MONGODB_URI = mongo.getUri('autohire-phase5-test')
   await mongoose.connect(process.env.MONGODB_URI, { dbName: 'autohire-phase5-test' })
@@ -39,8 +42,9 @@ before(async () => {
   await bookingMigration.up(mongoose.connection.db)
   await paymentMigration.up(mongoose.connection.db)
   await operationsMigration.up(mongoose.connection.db)
+  await publicBookingMigration.up(mongoose.connection.db)
 
-  ;({ User, Vehicle, Booking, Mechanic, Incident } = require('../src/models'))
+  ;({ User, Vehicle, Booking, Mechanic, Incident, GuestAccess, BookingExtension } = require('../src/models'))
   uploadDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'autohire-phase5-'))
   const { createApp } = require('../src/app')
   server = await startTestServer(createApp({
@@ -134,6 +138,122 @@ async function json(response) {
 }
 
 describe('Phase 5 operations API', () => {
+  it('creates a public guest hold with authoritative quote, expiry, and idempotent replay', async () => {
+    const vehicle = await createVehicle()
+    const pickupAt = new Date(Date.now() + 2 * 86_400_000)
+    const returnAt = new Date(pickupAt.getTime() + 2 * 86_400_000)
+    const key = '2a5ded88-6380-4b6c-a7cf-946fc87956d1'
+    const body = {
+      vehicleId: String(vehicle._id),
+      pickupAt: pickupAt.toISOString(),
+      returnAt: returnAt.toISOString(),
+      pickupLocation: 'Nairobi CBD',
+      mode: 'self_drive',
+      extras: [],
+    }
+    const create = () => fetch(`${server.baseUrl}/api/v1/bookings/guest-holds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+      body: JSON.stringify(body),
+    })
+    const response = await create()
+    assert.equal(response.status, 201)
+    const result = await json(response)
+    const expiresAt = Date.parse(result.data.holdExpiresAt)
+    assert.ok(expiresAt > Date.now() && expiresAt <= Date.now() + 15 * 60_000 + 1_000)
+
+    const checkout = await fetch(`${server.baseUrl}/api/v1/bookings/${result.data.bookingId}/checkout`)
+    assert.equal(checkout.status, 200)
+    const checkoutData = (await json(checkout)).data
+    assert.equal(checkoutData.booking.paymentMethod, 'mpesa_online')
+    assert.equal(checkoutData.booking.totalKes, 18_560)
+    assert.equal(checkoutData.vehicle.id, String(vehicle._id))
+
+    const replay = await create()
+    assert.equal(replay.status, 201)
+    assert.equal((await json(replay)).data.bookingId, result.data.bookingId)
+
+    const conflict = await fetch(`${server.baseUrl}/api/v1/bookings/guest-holds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+      body: JSON.stringify({ ...body, pickupLocation: 'Westlands' }),
+    })
+    assert.equal(conflict.status, 409)
+    assert.equal((await json(conflict)).error.code, 'IDEMPOTENCY_CONFLICT')
+  })
+
+  it('lets active guests request an extension and requires staff payment proof to approve it', async () => {
+    const manager = await createActor('manager', 'extension')
+    const vehicle = await createVehicle()
+    const now = Date.now()
+    const pickupAt = new Date(now - 23 * 60 * 60_000)
+    const returnAt = new Date(now + 60 * 60_000)
+    const booking = await createBooking(manager.user, vehicle, {
+      status: 'checked_out',
+      pickupAt,
+      returnAt,
+      mode: 'self_drive',
+      totalKes: 9_280,
+      pricingSnapshot: {
+        baseDays: 1,
+        baseRateKes: 8_000,
+        baseAmountKes: 8_000,
+        chauffeurFeeKes: 0,
+        driverLocation: 'in_town',
+        extras: [],
+        vatRate: 16,
+        vatAmountKes: 1_280,
+        totalDueKes: 9_280,
+        refundableDepositKes: 15_000,
+      },
+    })
+    const sessionToken = 'test-guest-session-token-with-sufficient-entropy'
+    await GuestAccess.create({
+      bookingId: booking._id,
+      reference: booking.reference,
+      sessionTokenHash: hashGuestToken(sessionToken),
+      expiresAt: new Date(now + 30 * 86_400_000),
+      revokedAt: null,
+    })
+    const requestedReturnAt = new Date(now + 25 * 60 * 60_000)
+    const requestResponse = await fetch(`${server.baseUrl}/api/v1/bookings/${booking.reference}/extensions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `booking_access=${sessionToken}` },
+      body: JSON.stringify({ requestedReturnAt: requestedReturnAt.toISOString(), reason: 'Travel plans changed' }),
+    })
+    assert.equal(requestResponse.status, 201)
+    const extension = (await json(requestResponse)).data
+    assert.equal(extension.feeKes, 9_280)
+
+    const notifications = await fetch(`${server.baseUrl}/api/v1/notifications`, { headers: authHeaders(manager.token) })
+    assert.equal((await json(notifications)).data.pendingExtensions, 1)
+
+    const approvals = await fetch(`${server.baseUrl}/api/v1/extensions?status=pending`, { headers: authHeaders(manager.token) })
+    assert.equal(approvals.status, 200)
+    assert.equal((await json(approvals)).data.items[0].id, extension.id)
+    const missingPayment = await fetch(`${server.baseUrl}/api/v1/extensions/${extension.id}/decision`, {
+      method: 'POST',
+      headers: authHeaders(manager.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ decision: 'approve' }),
+    })
+    assert.equal(missingPayment.status, 400)
+
+    const decision = await fetch(`${server.baseUrl}/api/v1/extensions/${extension.id}/decision`, {
+      method: 'POST',
+      headers: authHeaders(manager.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ decision: 'approve', paymentMethod: 'cash', paymentReference: 'RCPT-EXT-100' }),
+    })
+    assert.equal(decision.status, 200)
+    assert.equal((await json(decision)).data.status, 'approved')
+    const updatedBooking = await Booking.findById(booking._id).lean()
+    assert.equal(updatedBooking.returnAt.toISOString(), requestedReturnAt.toISOString())
+    assert.equal(updatedBooking.totalKes, 18_560)
+    assert.equal(updatedBooking.payments[0].reference, 'RCPT-EXT-100')
+    assert.equal((await BookingExtension.findById(extension.id).lean()).feeKes, 9_280)
+    const clearedNotifications = await fetch(`${server.baseUrl}/api/v1/notifications`, { headers: authHeaders(manager.token) })
+    assert.equal((await json(clearedNotifications)).data.pendingExtensions, 0)
+  })
+
   it('serializes driver assignment, enforces assigned-trip ownership, and validates trip transitions', async () => {
     const manager = await createActor('manager', 'assign')
     const driver = await createActor('driver', 'assign', {
@@ -243,7 +363,7 @@ describe('Phase 5 operations API', () => {
     })
     assert.equal(checkout.status, 200)
 
-    const unauthorizedPhoto = await fetch(`${server.baseUrl}/api/v1${checkoutPhoto}`, {
+    const unauthorizedPhoto = await fetch(`${server.baseUrl}${checkoutPhoto}`, {
       headers: authHeaders(otherDriver.token),
     })
     assert.equal(unauthorizedPhoto.status, 403)
@@ -279,7 +399,7 @@ describe('Phase 5 operations API', () => {
     assert.equal(savedBooking.inspections[1].settlement.totalKes, 5500)
     assert.deepEqual(savedBooking.inspections[1].photos, [checkinPhoto])
     assert.equal((await Vehicle.findById(vehicle._id)).status, 'maintenance')
-    const retrievedPhoto = await fetch(`${server.baseUrl}/api/v1${checkinPhoto}`, { headers: authHeaders(manager.token) })
+    const retrievedPhoto = await fetch(`${server.baseUrl}${checkinPhoto}`, { headers: authHeaders(manager.token) })
     assert.equal(retrievedPhoto.status, 200)
     assert.equal(retrievedPhoto.headers.get('content-type'), 'image/png')
   })
@@ -311,7 +431,7 @@ describe('Phase 5 operations API', () => {
     form.set('location', JSON.stringify({ type: 'Point', coordinates: [36.8173, -1.2865] }))
     form.set('locationText', 'Nairobi CBD')
     form.set('immobilising', 'true')
-    form.set('file', new Blob([png], { type: 'image/png' }), 'incident.png')
+    form.append('photos', new Blob([png], { type: 'image/png' }), 'incident.png')
     const createIncident = await fetch(`${server.baseUrl}/api/v1/incidents/breakdown`, {
       method: 'POST',
       body: form,

@@ -24,6 +24,9 @@ const schema = z.object({
   MAIL_FROM: z.string().optional().default(''),
   CONTACT_INBOX: z.string().email().default('hello@autohire.ke'),
   PRIVATE_UPLOAD_DIR: z.string().min(1).default(path.resolve(__dirname, '../../private-files')),
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
+  CLOUDINARY_API_KEY: z.string().optional().default(''),
+  CLOUDINARY_API_SECRET: z.string().optional().default(''),
   PAYHERO_API_BASE_URL: z.string().url().default('https://backend.payhero.co.ke'),
   PAYHERO_USERNAME: z.string().optional().default(''),
   PAYHERO_PASSWORD: z.string().optional().default(''),
@@ -42,6 +45,10 @@ const schema = z.object({
   }
   if (Boolean(value.SMTP_USER) !== Boolean(value.SMTP_PASSWORD)) {
     context.addIssue({ code: 'custom', message: 'SMTP_USER and SMTP_PASSWORD must be configured together' })
+  }
+  const cloudinaryFields = [value.CLOUDINARY_CLOUD_NAME, value.CLOUDINARY_API_KEY, value.CLOUDINARY_API_SECRET]
+  if (cloudinaryFields.some(Boolean) && !cloudinaryFields.every(Boolean)) {
+    context.addIssue({ code: 'custom', message: 'CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be configured together' })
   }
   const payHeroConfigured = Boolean(
     value.PAYHERO_USERNAME || value.PAYHERO_PASSWORD || value.PAYHERO_CHANNEL_ID || value.PAYHERO_CALLBACK_URL,
@@ -68,6 +75,7 @@ const env = Object.freeze({
   CORS_ORIGINS: values.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean),
   SMTP_SECURE: values.SMTP_SECURE.toLowerCase() === 'true',
   smtpConfigured: Boolean(values.SMTP_HOST && values.SMTP_PORT && values.MAIL_FROM),
+  cloudinaryConfigured: Boolean(values.CLOUDINARY_CLOUD_NAME && values.CLOUDINARY_API_KEY && values.CLOUDINARY_API_SECRET),
   payHeroConfigured: Boolean(
     values.PAYHERO_USERNAME && values.PAYHERO_PASSWORD && values.PAYHERO_CHANNEL_ID && values.PAYHERO_CALLBACK_URL,
   ),

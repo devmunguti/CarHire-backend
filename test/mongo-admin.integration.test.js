@@ -25,8 +25,7 @@ before(async () => {
   process.env.MONGOMS_VERSION ||= '4.4.29'
   ;({ MongoMemoryReplSet } = require('mongodb-memory-server-core'))
   mongo = await MongoMemoryReplSet.create({
-    replSet: { count: 1, storageEngine: 'wiredTiger' },
-    instance: { launchTimeout: 60000 },
+    replSet: { count: 1, storageEngine: 'wiredTiger', launchTimeout: 60000 },
   })
   process.env.MONGODB_URI = mongo.getUri('autohire-phase6-test')
   await mongoose.connect(process.env.MONGODB_URI, { dbName: 'autohire-phase6-test' })
@@ -244,7 +243,7 @@ describe('Phase 6 admin API', () => {
 
     const notifications = await fetch(`${server.baseUrl}/api/v1/notifications`, { headers: authHeaders(owner.token) })
     assert.equal(notifications.status, 200)
-    assert.deepEqual((await notifications.json()).data, { pendingApprovals: 1, openIncidents: 0 })
+    assert.deepEqual((await notifications.json()).data, { pendingApprovals: 1, openIncidents: 0, pendingExtensions: 0 })
 
     const search = await fetch(`${server.baseUrl}/api/v1/search?q=Toyota`, { headers: authHeaders(owner.token) })
     assert.equal(search.status, 200)

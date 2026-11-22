@@ -1,11 +1,22 @@
 const express = require('express')
 const multer = require('multer')
+const rateLimit = require('express-rate-limit')
 const { z } = require('zod')
 const { AppError } = require('../lib/errors')
 const { validate } = require('../middleware/validate')
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i)
 const reference = z.string().regex(/^BK-[A-Z\d-]{4,80}$/i)
+const dateTime = z.string().datetime({ offset: true }).transform((value) => new Date(value))
+const guestHoldBody = z.object({
+  vehicleId: objectId,
+  pickupAt: dateTime,
+  returnAt: dateTime,
+  pickupLocation: z.string().trim().min(1).max(300),
+  mode: z.enum(['self_drive', 'chauffeur']),
+  driverLocation: z.enum(['in_town', 'upcountry']).optional(),
+  extras: z.array(z.enum(['baby_seat', 'rooftop_tent', 'cooler_box', 'airport_pickup'])).max(10),
+}).strict()
 const checkoutBody = z.object({
   name: z.string().trim().min(2).max(120),
   phone: z.string().regex(/^254[17]\d{8}$/),
@@ -45,6 +56,24 @@ function createGuestBookingsRouter({
 }) {
   const router = express.Router()
   const uploadLicence = createLicenceUpload()
+  const holdLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 8,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler(req, res, next) {
+      next(new AppError(429, 'RATE_LIMITED', 'Too many booking attempts; try again later'))
+    },
+  })
+
+  router.post('/bookings/guest-holds', holdLimiter, validate(z.object({
+    body: guestHoldBody,
+  })), async (req, res) => {
+    const key = z.string().uuid().safeParse(req.get('Idempotency-Key'))
+    if (!key.success) throw new AppError(400, 'VALIDATION_ERROR', 'A valid Idempotency-Key is required')
+    const booking = await bookingService.createGuestHold(req.validated.body, key.data)
+    res.status(201).json(success({ bookingId: booking.id, holdExpiresAt: booking.holdExpiresAt }))
+  })
 
   router.get('/bookings/:bookingId/checkout', validate(z.object({
     params: z.object({ bookingId: objectId }),

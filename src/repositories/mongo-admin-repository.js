@@ -1,5 +1,5 @@
 const mongoose = require('mongoose')
-const { Booking, Incident, Vehicle } = require('../models')
+const { Booking, BookingExtension, Incident, Vehicle } = require('../models')
 const { AppError } = require('../lib/errors')
 const { bookingView } = require('./mongo-fleet-repository')
 
@@ -142,11 +142,12 @@ function createMongoAdminRepository() {
     async notificationCounts(actor) {
       const canApprove = ['owner', 'manager', 'agent'].includes(actor.role)
       const canReadIncidents = ['owner', 'manager', 'agent', 'mechanic'].includes(actor.role)
-      const [pendingApprovals, openIncidents] = await Promise.all([
+      const [pendingApprovals, openIncidents, pendingExtensions] = await Promise.all([
         canApprove ? Booking.countDocuments({ status: 'reserved', pendingApproval: true, holdExpiresAt: { $gt: new Date() } }) : 0,
         canReadIncidents ? Incident.countDocuments({ status: { $ne: 'resolved' } }) : 0,
+        canApprove ? BookingExtension.countDocuments({ status: 'pending' }) : 0,
       ])
-      return { pendingApprovals, openIncidents }
+      return { pendingApprovals, openIncidents, pendingExtensions }
     },
 
     async search(query) {

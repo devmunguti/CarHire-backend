@@ -1,6 +1,8 @@
 const express = require('express')
+const multer = require('multer')
 const { z } = require('zod')
 const { validate } = require('../middleware/validate')
+const { AppError } = require('../lib/errors')
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i)
 const dateTime = z.string().datetime({ offset: true }).transform((value) => new Date(value))
@@ -30,8 +32,24 @@ function success(data) {
   return { success: true, data, error: null }
 }
 
+function uploadVehicleImage() {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 },
+  }).single('image')
+  return (req, res, next) => upload(req, res, (error) => {
+    if (!error) return next()
+    if (error.code === 'LIMIT_FILE_SIZE') return next(new AppError(413, 'PAYLOAD_TOO_LARGE', 'Image exceeds 5 MiB'))
+    if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return next(new AppError(400, 'INVALID_FILE', 'Upload one image using the image field'))
+    }
+    return next(error)
+  })
+}
+
 function createVehiclesRouter({ fleetService, requireAuth, requirePermission }) {
   const router = express.Router()
+  const parseVehicleImage = uploadVehicleImage()
 
   router.get('/', validate(z.object({ query: listQuery })), async (req, res) => {
     res.json(success(await fleetService.listVehicles(req.validated.query)))
@@ -50,6 +68,13 @@ function createVehiclesRouter({ fleetService, requireAuth, requirePermission }) 
     body: vehiclePatch,
   })), async (req, res) => {
     res.json(success(await fleetService.updateVehicle(req.validated.params.vehicleId, req.validated.body)))
+  })
+
+  router.post('/:vehicleId/image', requireAuth, requirePermission('vehicles:manage'), validate(z.object({
+    params: z.object({ vehicleId: objectId }),
+  })), parseVehicleImage, async (req, res) => {
+    if (!req.file) throw new AppError(400, 'INVALID_FILE', 'Upload a JPEG, PNG, or WebP image')
+    res.status(201).json(success(await fleetService.uploadVehicleImage(req.validated.params.vehicleId, req.file)))
   })
 
   return router

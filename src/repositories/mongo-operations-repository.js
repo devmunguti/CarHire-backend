@@ -145,7 +145,7 @@ function driverEligible(user, vehicle, from, to, now) {
 function photoReference(bookingId, type, value) {
   if (typeof value !== 'string') return null
   const escapedId = bookingId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = new RegExp(`^/bookings/${escapedId}/inspections/photos/([a-f\\d-]{36})$`, 'i').exec(value)
+  const match = new RegExp(`^/(?:api/v1/)?bookings/${escapedId}/inspections/photos/([a-f\\d-]{36})$`, 'i').exec(value)
   return match ? { id: match[1], type } : null
 }
 

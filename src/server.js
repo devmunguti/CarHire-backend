@@ -16,7 +16,7 @@ async function startServer() {
   cleanupTimer.unref()
   const app = createApp({ fileStore })
   const server = app.listen(env.PORT, '0.0.0.0', () => {
-    logger.info({ port: env.PORT }, 'AutoHire API listening')
+    logger.info({ port: env.PORT }, 'Gari Poa API listening')
   })
 
   async function shutdown(signal) {
@@ -38,7 +38,7 @@ async function startServer() {
 
 if (require.main === module) {
   startServer().catch((error) => {
-    logger.fatal({ err: error }, 'failed to start AutoHire API')
+    logger.fatal({ err: error }, 'failed to start Gari Poa API')
     process.exitCode = 1
   })
 }

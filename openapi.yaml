@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: AutoHire KE API
+  title: Gari Poa API
   version: 1.0.0
   description: |
-    Contract for the AutoHire KE frontend and backend. All successful API
+    Contract for the Gari Poa frontend and backend. All successful API
     responses use `{ success: true, data, error: null }`; all errors use the
     ErrorEnvelope schema. Monetary values are integer Kenyan shillings.
     Pricing, booking state changes, authorization, and payment outcomes are
@@ -46,6 +46,7 @@ x-error-codes:
   createVehicle: [UNAUTHENTICATED, FORBIDDEN, VALIDATION_ERROR, CONFLICT]
   getVehicle: [NOT_FOUND]
   updateVehicle: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, VEHICLE_UNAVAILABLE]
+  uploadVehicleImage: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_FILE, PAYLOAD_TOO_LARGE, IMAGE_STORAGE_UNAVAILABLE, IMAGE_UPLOAD_FAILED]
   listMaintenanceWindows: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY, VALIDATION_ERROR]
   createMaintenanceWindow: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, VEHICLE_UNAVAILABLE]
   updateMaintenanceWindow: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, VEHICLE_UNAVAILABLE]
@@ -63,13 +64,17 @@ x-error-codes:
   submitGuestCheckout: [NOT_FOUND, HOLD_EXPIRED, INVALID_CHECKOUT, INVALID_LICENCE, INVALID_FILE]
   getGuestBooking: [GUEST_ACCESS_INVALID, NOT_FOUND]
   exchangeGuestBookingAccess: [GUEST_ACCESS_INVALID, NOT_FOUND]
+  createGuestHold: [RATE_LIMITED, VALIDATION_ERROR, INVALID_DATE_RANGE, VEHICLE_UNAVAILABLE, IDEMPOTENCY_CONFLICT]
+  requestBookingExtension: [GUEST_ACCESS_INVALID, EXTENSION_UNAVAILABLE, EXTENSION_PENDING, INVALID_DATE_RANGE, RATE_LIMITED]
+  listBookingExtensions: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
+  reviewBookingExtension: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, EXTENSION_REVIEWED, EXTENSION_UNAVAILABLE, INVALID_EXTENSION_PRICE, INVALID_EXTENSION_PAYMENT]
   uploadInspectionPhoto: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, INVALID_FILE, PHOTO_LIMIT_EXCEEDED, PAYLOAD_TOO_LARGE]
   checkOutBooking: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INVALID_STATUS, INVALID_INSPECTION]
   previewCheckInSettlement: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CHECK_OUT_REQUIRED, ODOMETER_INVALID]
   checkInBooking: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CHECK_OUT_REQUIRED, ODOMETER_INVALID, CONFIRMATION_REQUIRED]
-  initiateMpesaStk: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, HOLD_EXPIRED, INVALID_PHONE, PAYMENT_NOT_DUE, IDEMPOTENCY_CONFLICT]
-  getPaymentStatus: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND]
-  receiveMpesaCallback: [INVALID_PROVIDER_SIGNATURE, INVALID_PROVIDER_EVENT, PAYMENT_NOT_FOUND]
+  initiatePayHeroPayment: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, HOLD_EXPIRED, INVALID_PHONE, PAYMENT_NOT_DUE, IDEMPOTENCY_CONFLICT, PAYMENT_PROVIDER_UNAVAILABLE, PAYMENT_PROVIDER_ERROR]
+  getPaymentStatus: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, PAYMENT_PROVIDER_UNAVAILABLE, PAYMENT_PROVIDER_ERROR]
+  receivePayHeroCallback: [INVALID_PROVIDER_EVENT, PAYMENT_NOT_FOUND, PAYMENT_PROVIDER_ERROR]
   listDrivers: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
   listAvailableDrivers: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
   listMyDriverTrips: [UNAUTHENTICATED, FORBIDDEN, INVALID_QUERY]
@@ -148,6 +153,7 @@ x-operation-access:
   createVehicle: { auth: bearer, roles: [owner, manager] }
   getVehicle: { auth: public, roles: [] }
   updateVehicle: { auth: bearer, roles: [owner, manager] }
+  uploadVehicleImage: { auth: bearer, roles: [owner, manager] }
   listMaintenanceWindows: { auth: bearer, roles: [owner, manager, agent, mechanic] }
   createMaintenanceWindow: { auth: bearer, roles: [owner, manager] }
   updateMaintenanceWindow: { auth: bearer, roles: [owner, manager] }
@@ -163,15 +169,19 @@ x-operation-access:
   updateAssignedDriverTripStatus: { auth: bearer, roles: [assigned-driver] }
   getGuestCheckout: { auth: public, roles: [] }
   submitGuestCheckout: { auth: public, roles: [] }
+  createGuestHold: { auth: public, roles: [] }
   getGuestBooking: { auth: booking-access-cookie, roles: [authorized-guest] }
   exchangeGuestBookingAccess: { auth: one-time-guest-token, roles: [] }
+  requestBookingExtension: { auth: booking-access-cookie, roles: [authorized-guest] }
+  listBookingExtensions: { auth: bearer, roles: [owner, manager, agent] }
+  reviewBookingExtension: { auth: bearer, roles: [owner, manager, agent] }
   uploadInspectionPhoto: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
   checkOutBooking: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
   previewCheckInSettlement: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
   checkInBooking: { auth: bearer, roles: [owner, manager, agent, assigned-driver] }
-  initiateMpesaStk: { auth: bearer-or-booking-access-cookie, roles: [owner, manager, agent, authorized-guest] }
+  initiatePayHeroPayment: { auth: bearer-or-booking-access-cookie, roles: [owner, manager, agent, authorized-guest] }
   getPaymentStatus: { auth: bearer-or-booking-access-cookie, roles: [owner, manager, agent, authorized-guest] }
-  receiveMpesaCallback: { auth: provider-signature, roles: [] }
+  receivePayHeroCallback: { auth: provider-callback, roles: [] }
   listDrivers: { auth: bearer, roles: [owner, manager, agent] }
   listAvailableDrivers: { auth: bearer, roles: [owner, manager, agent] }
   listMyDriverTrips: { auth: bearer, roles: [driver] }
@@ -481,6 +491,32 @@ paths:
       responses:
         '200':
           description: Updated vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/vehicles/{vehicleId}/image:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    post:
+      tags: [Vehicles]
+      operationId: uploadVehicleImage
+      description: Requires vehicles:manage permission. Stores one JPEG, PNG, or WebP image up to 5 MiB in Cloudinary, saves its secure CDN URL to the vehicle, and removes the previous image after a successful replacement.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: { type: string, format: binary, description: JPEG, PNG, or WebP image up to 5 MiB }
+      responses:
+        '201':
+          description: Vehicle image uploaded and its URL saved
           content:
             application/json:
               schema:
@@ -888,6 +924,36 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /api/v1/bookings/guest-holds:
+    post:
+      tags: [Guest bookings]
+      operationId: createGuestHold
+      security: []
+      description: |
+        Public, rate-limited reservation hold creation. The server calculates
+        the authoritative quote and checks vehicle availability transactionally.
+        A UUID Idempotency-Key is required; matching retries replay the hold.
+        Holds expire after 15 minutes and do not confirm payment.
+      parameters:
+        - $ref: '#/components/parameters/GuestHoldIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestHoldRequest'
+      responses:
+        '201':
+          description: A temporary booking hold was created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestHoldEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
   /api/v1/bookings/{bookingId}/checkout:
     parameters:
       - $ref: '#/components/parameters/BookingId'
@@ -993,6 +1059,97 @@ paths:
               schema:
                 $ref: '#/components/schemas/AcknowledgementEnvelope'
         '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/bookings/{reference}/extensions:
+    parameters:
+      - name: reference
+        in: path
+        required: true
+        schema: { type: string, pattern: '^BK-[A-Z\d-]{4,80}$' }
+    post:
+      tags: [Guest bookings]
+      operationId: requestBookingExtension
+      security:
+        - GuestBookingToken: []
+      description: |
+        An authenticated guest may request an extension only during an active
+        rental. The server checks availability and calculates the estimated
+        fee. Staff must review the request; approval never automatically
+        charges the guest.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [requestedReturnAt, reason]
+              properties:
+                requestedReturnAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: Extension request submitted for staff review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingExtensionEnvelope'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/extensions:
+    get:
+      tags: [Bookings]
+      operationId: listBookingExtensions
+      description: Requires bookings:create. Lists extension requests for staff review.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageCursor'
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, approved, declined], default: pending }
+      responses:
+        '200':
+          description: Extension requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingExtensionListEnvelope'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/extensions/{extensionId}/decision:
+    parameters:
+      - name: extensionId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[a-f\d]{24}$' }
+    post:
+      tags: [Bookings]
+      operationId: reviewBookingExtension
+      description: |
+        Requires bookings:create. Approval rechecks availability and requires
+        an offline payment method and receipt reference when the fee is
+        positive. The extension is never charged automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingExtensionDecisionRequest'
+      responses:
+        '200':
+          description: Extension request reviewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingExtensionEnvelope'
+        '409':
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
@@ -1103,13 +1260,16 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
-  /api/v1/bookings/{bookingId}/payments/stk:
+  /api/v1/bookings/{reference}/payments/stk:
     parameters:
-      - $ref: '#/components/parameters/BookingId'
+      - name: reference
+        in: path
+        required: true
+        schema: { type: string, pattern: '^BK-[A-Z\d-]{4,80}$' }
     post:
       tags: [Payments]
-      operationId: initiateMpesaStk
-      description: Server obtains the payable amount from the booking; legacy client-supplied amounts are ignored.
+      operationId: initiatePayHeroPayment
+      description: Server obtains the payable amount from the booking and asks PayHero to initiate an M-Pesa STK push.
       security:
         - BearerAuth: []
         - GuestBookingToken: []
@@ -1140,12 +1300,16 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
-  /api/v1/payments/{paymentId}/status:
+  /api/v1/bookings/{reference}/payments/{paymentId}/status:
     parameters:
+      - name: reference
+        in: path
+        required: true
+        schema: { type: string, pattern: '^BK-[A-Z\d-]{4,80}$' }
       - name: paymentId
         in: path
         required: true
-        schema: { type: string }
+        schema: { type: string, format: uuid }
     get:
       tags: [Payments]
       operationId: getPaymentStatus
@@ -1162,34 +1326,38 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
-  /api/v1/webhooks/mpesa:
+  /api/v1/webhooks/payhero:
     post:
       tags: [Payments]
-      operationId: receiveMpesaCallback
+      operationId: receivePayHeroCallback
       security: []
       description: |
-        Provider callback endpoint. Verify the provider signature before
-        processing. Provider event identifiers must be persisted uniquely so
-        duplicate callbacks return success without applying payment twice.
-        Exact provider payload/signature fields are an integration prerequisite.
-      parameters:
-        - in: header
-          name: X-Provider-Signature
-          required: true
-          schema: { type: string }
+        PayHero callback endpoint. The server validates the callback fields and
+        independently queries PayHero's transaction-status endpoint before
+        applying an outcome. Duplicate callbacks are settled idempotently.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [providerEventId, paymentId, outcome]
+              required: [status, response]
               properties:
-                providerEventId: { type: string, minLength: 1 }
-                paymentId: { type: string }
-                outcome: { type: string, enum: [confirmed, failed] }
-                providerReference: { type: string }
-                amountKes: { type: integer, minimum: 0 }
+                status: { type: boolean }
+                response:
+                  type: object
+                  additionalProperties: false
+                  required: [Amount, CheckoutRequestID, ExternalReference, MerchantRequestID, Phone, ResultCode, ResultDesc, Status]
+                  properties:
+                    Amount: { type: integer, minimum: 1 }
+                    CheckoutRequestID: { type: string, minLength: 1, maxLength: 200 }
+                    ExternalReference: { type: string, format: uuid }
+                    MerchantRequestID: { type: string, minLength: 1, maxLength: 200 }
+                    MpesaReceiptNumber: { type: string, maxLength: 120 }
+                    Phone: { type: string, minLength: 10, maxLength: 20 }
+                    ResultCode: { type: integer }
+                    ResultDesc: { type: string, maxLength: 1000 }
+                    Status: { type: string, enum: [Success, Failed] }
       responses:
         '200':
           description: Callback accepted or recognized as a duplicate
@@ -1472,7 +1640,11 @@ paths:
     get:
       tags: [Dashboard]
       operationId: getNotificationCounts
-      description: Requires owner, manager, or agent role. Return only counts the requesting role is allowed to see.
+      description: |
+        Requires an authenticated staff user. Booking approvals and pending
+        extensions are counted for owner, manager, and agent roles; open
+        incidents are counted for owner, manager, agent, and mechanic roles.
+        Counts outside the requesting role's permissions are zero.
       responses:
         '200':
           description: Shell notification counts
@@ -1760,6 +1932,12 @@ components:
       required: false
       description: Optional. Repeated requests with the same key and payload return the original result.
       schema: { type: string, minLength: 16, maxLength: 128 }
+    GuestHoldIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID used to replay a matching guest hold safely.
+      schema: { type: string, format: uuid }
   responses:
     Error:
       description: Request failed
@@ -1892,6 +2070,7 @@ components:
         make: { type: string }
         model: { type: string }
         category: { type: string }
+        imageUrl: { type: string, format: uri, readOnly: true }
         year: { type: integer, minimum: 1900 }
         registration: { type: string }
         seats: { type: integer, minimum: 1 }
@@ -2151,6 +2330,86 @@ components:
             customerEmail: { type: string, format: email }
             customerIdNumber: { type: string, minLength: 4, maxLength: 50 }
             paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+    GuestHoldRequest:
+      type: object
+      additionalProperties: false
+      required: [vehicleId, pickupAt, returnAt, pickupLocation, mode, extras]
+      properties:
+        vehicleId: { type: string, pattern: '^[a-f\d]{24}$' }
+        pickupAt: { type: string, format: date-time }
+        returnAt: { type: string, format: date-time }
+        pickupLocation: { type: string, minLength: 1, maxLength: 300 }
+        mode: { $ref: '#/components/schemas/DriveMode' }
+        driverLocation: { type: string, enum: [in_town, upcountry] }
+        extras:
+          type: array
+          maxItems: 10
+          items: { type: string, enum: [baby_seat, rooftop_tent, cooler_box, airport_pickup] }
+    GuestHoldEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [bookingId, holdExpiresAt]
+              properties:
+                bookingId: { type: string }
+                holdExpiresAt: { type: string, format: date-time }
+    BookingExtensionDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approve, decline] }
+        paymentMethod: { type: string, enum: [cash, mpesa_manual, bank] }
+        paymentReference: { type: string, minLength: 1, maxLength: 120 }
+        reviewNote: { type: string, maxLength: 1000 }
+    BookingExtension:
+      type: object
+      required: [id, reference, requestedReturnAt, currentReturnAt, reason, status, feeKes, createdAt]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        requestedReturnAt: { type: string, format: date-time }
+        currentReturnAt: { type: string, format: date-time }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved, declined] }
+        feeKes: { type: integer, minimum: 0 }
+        paymentReference: { type: string }
+        paymentMethod: { type: string, enum: [cash, mpesa_manual, bank] }
+        reviewNote: { type: string }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+        booking:
+          type: object
+          required: [id, reference, currentReturnAt, status]
+          properties:
+            id: { type: string }
+            reference: { type: string }
+            customerName: { type: string }
+            vehicle: { type: string }
+            currentReturnAt: { type: string, format: date-time }
+            status: { $ref: '#/components/schemas/BookingStatus' }
+    BookingExtensionEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/BookingExtension' }
+    BookingExtensionListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/BookingExtension' }
+                nextCursor: { type: [string, 'null'] }
     BookingListEnvelope:
       allOf:
         - $ref: '#/components/schemas/SuccessEnvelope'
@@ -2205,6 +2464,7 @@ components:
         make: { type: string }
         model: { type: string }
         registration: { type: string }
+        imageUrl: { type: string, format: uri }
     GuestCheckoutVehicle:
       allOf:
         - $ref: '#/components/schemas/GuestVehicle'
@@ -2555,10 +2815,11 @@ components:
           properties:
             data:
               type: object
-              required: [pendingApprovals, openIncidents]
+              required: [pendingApprovals, openIncidents, pendingExtensions]
               properties:
                 pendingApprovals: { type: integer, minimum: 0 }
                 openIncidents: { type: integer, minimum: 0 }
+                pendingExtensions: { type: integer, minimum: 0 }
     SearchResultsEnvelope:
       allOf:
         - $ref: '#/components/schemas/SuccessEnvelope'

@@ -16,9 +16,11 @@ const { fleetRepository: defaultFleetRepository } = require('./repositories/mong
 const { createMongoOperationsRepository } = require('./repositories/mongo-operations-repository')
 const { createMongoAdminRepository } = require('./repositories/mongo-admin-repository')
 const { createMongoAuditRepository } = require('./repositories/mongo-audit-repository')
+const { createMongoExtensionRepository } = require('./repositories/mongo-extension-repository')
 const { createAuthService } = require('./services/auth-service')
 const { createAccountService } = require('./services/account-service')
 const { createFleetService } = require('./services/fleet-service')
+const { createCloudinaryImageStore } = require('./services/cloudinary-image-store')
 const { createBookingService } = require('./services/booking-service')
 const { createGuestBookingService } = require('./services/guest-booking-service')
 const { createPaymentService } = require('./services/payment-service')
@@ -37,6 +39,8 @@ const { createOperationsService } = require('./services/operations-service')
 const { createAdminService } = require('./services/admin-service')
 const { createAdminRouter } = require('./routes/admin')
 const { createContactRouter } = require('./routes/contact')
+const { createExtensionsRouter } = require('./routes/extensions')
+const { createExtensionService } = require('./services/extension-service')
 
 function success(data) {
   return { success: true, data, error: null }
@@ -50,6 +54,7 @@ function createApp(options = {}) {
   const operationsRepository = options.operationsRepository ?? createMongoOperationsRepository()
   const adminRepository = options.adminRepository ?? createMongoAdminRepository()
   const auditRepository = options.auditRepository ?? createMongoAuditRepository()
+  const extensionRepository = options.extensionRepository ?? createMongoExtensionRepository()
   const mailer = options.mailer ?? createMailer(config)
   const authService = options.authService ?? createAuthService({
     repository,
@@ -61,7 +66,8 @@ function createApp(options = {}) {
     logger,
     frontendBaseUrl: config.FRONTEND_BASE_URL,
   })
-  const fleetService = options.fleetService ?? createFleetService({ repository: fleetRepository })
+  const imageStore = options.imageStore ?? createCloudinaryImageStore(config)
+  const fleetService = options.fleetService ?? createFleetService({ repository: fleetRepository, imageStore, logger })
   const bookingService = options.bookingService ?? createBookingService({ repository: fleetRepository })
   const fileStore = options.fileStore ?? createPrivateFileStore(config.PRIVATE_UPLOAD_DIR || path.resolve(__dirname, '../private-files'))
   const paymentProvider = options.paymentProvider ?? createPayHeroProvider(config)
@@ -69,6 +75,7 @@ function createApp(options = {}) {
   const paymentService = options.paymentService ?? createPaymentService({ provider: paymentProvider })
   const operationsService = options.operationsService ?? createOperationsService({ repository: operationsRepository, fileStore })
   const adminService = options.adminService ?? createAdminService({ repository: adminRepository, auditRepository })
+  const extensionService = options.extensionService ?? createExtensionService({ repository: extensionRepository })
   const { requireAuth, optionalAuth, requirePermission, requireAnyPermission, requireRole } = createAuthMiddleware({
     authService,
     accessTokenSecret: config.ACCESS_TOKEN_SECRET,
@@ -103,6 +110,7 @@ function createApp(options = {}) {
   app.use('/api/v1/auth', createAuthRouter({ authService, accountService, requireAuth, env: config }))
   app.use('/api/v1/staff', createStaffRouter({ accountService, requireAuth, requirePermission }))
   app.use('/api/v1', createAdminRouter({ adminService, requireAuth, requirePermission, requireRole }))
+  app.use('/api/v1', createExtensionsRouter({ extensionService, requireAuth, requirePermission }))
   app.use('/api/v1/vehicles', createVehiclesRouter({ fleetService, requireAuth, requirePermission }))
   app.use('/api/v1/maintenance-windows', createMaintenanceWindowsRouter({
     fleetService,

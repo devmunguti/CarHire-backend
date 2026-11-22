@@ -23,8 +23,7 @@ before(async () => {
   process.env.MONGOMS_VERSION ||= '4.4.29'
   ;({ MongoMemoryReplSet } = require('mongodb-memory-server-core'))
   mongo = await MongoMemoryReplSet.create({
-    replSet: { count: 1, storageEngine: 'wiredTiger' },
-    instance: { launchTimeout: 60000 },
+    replSet: { count: 1, storageEngine: 'wiredTiger', launchTimeout: 60000 },
   })
   process.env.MONGODB_URI = mongo.getUri('autohire-phase1-test')
   await mongoose.connect(process.env.MONGODB_URI, { dbName: 'autohire-phase1-test' })
